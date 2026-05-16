@@ -4,7 +4,7 @@
 
 # 產品需求規格書 (PRD)：互動式資產再平衡與監控平台
 
-**文件版本：** v1.2
+**文件版本：** v1.3
 **部署環境：** Web Application (部署於 Render 平台)
 **開發主軸：** 100% 免費開源套件、雲端原生架構、高彈性自訂配置
 
@@ -51,7 +51,12 @@
   * 美股標的：計算時依據設定檔扣除海外券商固定手續費或複委託成本。
 * **[BE-CAL-004] 單位處理：** 台股標的自動向下取整至個位數股（或提示轉為張數）；美股標的若券商支援碎股，則計算至小數點後兩位。
 
-### 2.5 資產監控中心與歷史快照 (Dashboard & History Tracking)
+### 2.5 邊界條件與異常處理 (Edge Cases & Error Handling)
+* **[ERR-001] 無效標的與報價失敗：** 若某標的 API 與爬蟲皆無法獲取價格，後端應拋出明確錯誤，前端 UI 應將該資產標紅，並暫停後續計算。
+* **[ERR-002] 多幣別計價基準 (Currency Base)：** 系統預設將所有外幣資產（如美股 USD）按即時匯率轉換為單一基準貨幣（如 TWD）以計算 `Total NAV`。
+* **[ERR-003] MVP 帳號系統：** v1.0 預計採單一使用者/免登入之 MVP 驗證，歷史紀錄將綁定單一預設 User ID，未來再擴充完整 Auth 機制。
+
+### 2.6 資產監控中心與歷史快照 (Dashboard & History Tracking)
 * **[UI-DASH-001] 即時儀表板：** 登入後自動加載最新數據，透過圖表（如 Chart.js/ECharts）直覺呈現「調整前佔比 vs. 目標佔比」的偏離度。
 * **[UI-DASH-002] 資產成長曲線：** 每當使用者執行再平衡並確認「已實際交易」後，系統會為當前的 Total NAV 與資產配置存入歷史快照，於前端繪製長線的資產成長趨勢圖。
 
@@ -68,6 +73,7 @@
 * **[API-001] GET /api/portfolio：** 獲取當前所有資產庫存與目標比例。
 * **[API-002] POST /api/rebalance/calculate：** 【僅單次試算】。接收臨時比例與金額，執行雙重驗證並回傳買賣建議（不更動資料庫）。
 * **[API-003] PUT /api/allocations/targets：** 【儲存設定】。更新資料庫中該用戶的目標配置比例。
+* **[API-DOC-001] OpenAPI 規範：** 透過 FastAPI 自動於 `/docs` 產生 Swagger UI，作為唯一的 API 介面合約。
 
 ---
 
@@ -75,3 +81,11 @@
 * **[DB-001] `allocations` (類別設定表)：** `id` (UUID), `category_name` (VARCHAR), `target_pct` (NUMERIC), `updated_at` (TIMESTAMP)
 * **[DB-002] `assets` (具體標的表)：** `id` (UUID), `allocation_id` (FK), `ticker` (VARCHAR), `shares` (NUMERIC), `currency` (VARCHAR)
 * **[DB-003] `history_snapshots` (歷史趨勢表)：** `id` (UUID), `record_date` (DATE), `total_nav` (NUMERIC), `snapshot_data` (JSONB)
+
+---
+
+## 6. 驗收標準 (Acceptance Criteria, AC)
+* **AC-01 (動態配置)：** 使用者調整資產卡片比例時，上方加總條應即時更新。唯有總和精確等於 100% 時，才能點擊「執行」按鈕。
+* **AC-02 (雙重報價)：** 在 `yfinance` 報價出現異常時，系統必須能無縫切換至網頁爬蟲數值，並輸出警告 log，不中斷運算過程（除非雙雙失效）。
+* **AC-03 (交易成本)：** 回傳的 JSON 報告中，`estimated_cost` 必須準確反映台股 0.1425% 買進手續費與 0.3% 賣出證交稅的最低門檻限制。
+* **AC-04 (API 規範一致性)：** 前端發送的 Request Payload 必須能 100% 對齊 FastAPI 產生的 Swagger OpenAPI 定義。
