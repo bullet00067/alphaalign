@@ -186,52 +186,71 @@ class RebalanceEngine:
             
             asset_actions = []
             
-            if len(cat.assets) > 0:
-                # 類別內的目標資金「均分」給每檔成分股 (Equal Weight Strategy)
-                asset_target_value = target_value / len(cat.assets)
+            if len(cat.assets) > 0 and abs(diff_amount) > 10:
+                # 排序：優先找股數最多的一檔
+                sorted_assets = sorted(cat.assets, key=lambda x: x.current_shares, reverse=True)
                 
-                for asset in cat.assets:
-                    price = verified_prices[asset.ticker]
-                    asset_current_value = asset.current_shares * price
-                    # 計算單一標的的應買賣差額
-                    asset_diff = asset_target_value - asset_current_value
+                if diff_amount > 0:
+                    # 需要買入 (BUY)，全額買入股數最多的一檔
+                    primary_asset = sorted_assets[0]
+                    price = verified_prices[primary_asset.ticker]
+                    ideal_shares = diff_amount / price
                     
-                    if abs(asset_diff) > 10: # 忽略小於 10 元的微小偏差
-                        ideal_shares_diff = asset_diff / price
+                    exec_shares = int(ideal_shares) if primary_asset.ticker.endswith(".TW") else round(ideal_shares, 2)
+                    exec_amount = exec_shares * price
+                    if exec_shares > 0:
+                        cost = cls.calculate_fee_and_tax(primary_asset.ticker, exec_amount, is_sell=False)
+                        estimated_total_cost += cost
+                        asset_actions.append({
+                            "ticker": primary_asset.ticker,
+                            "action": "BUY",
+                            "shares": round(exec_shares, 2),
+                            "price": round(price, 2),
+                            "estimated_value": round(exec_amount, 2),
+                            "estimated_cost": round(cost, 2)
+                        })
+                else:
+                    # 需要賣出 (SELL)，從股數最多的一檔開始賣，若不夠賣則找下一檔
+                    remaining_sell_amount = abs(diff_amount)
+                    for asset in sorted_assets:
+                        if remaining_sell_amount <= 10:
+                            break
                         
-                        # 判斷買賣屬性與處理碎股邏輯
-                        if ideal_shares_diff > 0:
-                            action = "BUY"
-                            # 台股向下取整至整數股，美股支援碎股
-                            exec_shares = int(ideal_shares_diff) if asset.ticker.endswith(".TW") else round(ideal_shares_diff, 2)
-                            exec_amount = exec_shares * price
-                            cost = cls.calculate_fee_and_tax(asset.ticker, exec_amount, is_sell=False)
-                        else:
-                            action = "SELL"
-                            exec_shares = int(abs(ideal_shares_diff)) if asset.ticker.endswith(".TW") else round(abs(ideal_shares_diff), 2)
+                        price = verified_prices[asset.ticker]
+                        asset_value = asset.current_shares * price
+                        
+                        if asset_value <= 0:
+                            continue
                             
-                            # 防呆保護：避免因為小數點誤差導致建議賣出超過實際持有的股數
-                            if exec_shares > asset.current_shares:
-                                exec_shares = asset.current_shares
-                                
+                        # 決定要賣多少金額
+                        sell_amount = min(remaining_sell_amount, asset_value)
+                        ideal_shares = sell_amount / price
+                        
+                        exec_shares = int(ideal_shares) if asset.ticker.endswith(".TW") else round(ideal_shares, 2)
+                        
+                        # 防呆保護：確保不賣超過目前持有
+                        if exec_shares > asset.current_shares:
+                            exec_shares = asset.current_shares
+                            
+                        if exec_shares > 0:
                             exec_amount = exec_shares * price
                             cost = cls.calculate_fee_and_tax(asset.ticker, exec_amount, is_sell=True)
-                        
-                        estimated_total_cost += cost
-                        
-                        if exec_shares > 0:
+                            estimated_total_cost += cost
+                            
                             asset_actions.append({
                                 "ticker": asset.ticker,
-                                "action": action,
-                                "shares": exec_shares,
-                                "price": price,
+                                "action": "SELL",
+                                "shares": round(exec_shares, 2),
+                                "price": round(price, 2),
                                 "estimated_value": round(exec_amount, 2),
                                 "estimated_cost": round(cost, 2)
                             })
+                            
+                            remaining_sell_amount -= exec_amount
 
             rebalance_reports.append({
                 "category": cat.category,
-                "target_pct": f"{cat.target_pct * 100}%",
+                "target_pct": f"{round(cat.target_pct * 100, 2)}%",
                 "current_value": round(current_value, 2),
                 "target_value": round(target_value, 2),
                 "diff_amount": round(diff_amount, 2),
