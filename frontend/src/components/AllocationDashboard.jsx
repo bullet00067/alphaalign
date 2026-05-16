@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
-import { Plus, Minus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2, ArrowRight } from 'lucide-react';
+import { Plus, Minus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2, ArrowRight, Trash2, Edit2 } from 'lucide-react';
 
 const INITIAL_ALLOCATIONS = [
-  { id: '1', category: '市值型股票', target_pct: 60, assets: [{ ticker: 'QQQM', shares: 50 }] },
+  { id: '1', category: '市值型股票', target_pct: 60, assets: [{ ticker: 'QQQM', shares: 50 }, { ticker: '0050.TW', shares: 0 }] },
   { id: '2', category: '高股息型', target_pct: 20, assets: [{ ticker: 'QYLD', shares: 100 }] },
   { id: '3', category: '美國公債', target_pct: 15, assets: [{ ticker: 'TLT', shares: 30 }] },
   { id: '4', category: '現金', target_pct: 5, assets: [] }
@@ -25,37 +25,100 @@ export default function AllocationDashboard() {
   const remaining = 100 - totalAllocation;
   const isPerfect = remaining === 0;
 
-  const updateAllocation = (id, newPct) => {
+  // --- Category Actions ---
+  const addCategory = () => {
+    setAllocations([...allocations, {
+      id: Date.now().toString(),
+      category: '新資產類別',
+      target_pct: 0,
+      assets: []
+    }]);
+  };
+
+  const removeCategory = (id) => {
+    setAllocations(allocations.filter(a => a.id !== id));
+    setReportData(null);
+  };
+
+  const updateCategoryName = (id, newName) => {
+    setAllocations(allocations.map(a => 
+      a.id === id ? { ...a, category: newName } : a
+    ));
+  };
+
+  const updateAllocationPct = (id, newPct) => {
     const validPct = Math.max(0, Math.min(100, Number(newPct) || 0));
     setAllocations(allocations.map(a => 
       a.id === id ? { ...a, target_pct: validPct } : a
     ));
-    // Reset report if allocation changes
     setReportData(null);
     setError(null);
   };
 
+  // --- Asset Actions ---
+  const addAsset = (categoryId) => {
+    setAllocations(allocations.map(a => {
+      if (a.id === categoryId) {
+        return { ...a, assets: [...a.assets, { ticker: '', shares: 0 }] };
+      }
+      return a;
+    }));
+  };
+
+  const removeAsset = (categoryId, assetIndex) => {
+    setAllocations(allocations.map(a => {
+      if (a.id === categoryId) {
+        const newAssets = [...a.assets];
+        newAssets.splice(assetIndex, 1);
+        return { ...a, assets: newAssets };
+      }
+      return a;
+    }));
+    setReportData(null);
+  };
+
+  const updateAsset = (categoryId, assetIndex, field, value) => {
+    setAllocations(allocations.map(a => {
+      if (a.id === categoryId) {
+        const newAssets = [...a.assets];
+        newAssets[assetIndex] = { ...newAssets[assetIndex], [field]: value };
+        return { ...a, assets: newAssets };
+      }
+      return a;
+    }));
+  };
+
+  // --- API Call ---
   const handleSimulate = async () => {
     setIsLoading(true);
     setError(null);
     setReportData(null);
 
-    // Prepare payload
+    // Validate empty tickers
+    for (const cat of allocations) {
+      for (const asset of cat.assets) {
+        if (!asset.ticker.trim()) {
+          setError(`請填寫「${cat.category}」中所有標的的代號 (Ticker)`);
+          setIsLoading(false);
+          return;
+        }
+      }
+    }
+
     const payload = {
-      deposit_cash: Number(depositCash),
-      current_free_cash: Number(freeCash),
+      deposit_cash: Number(depositCash) || 0,
+      current_free_cash: Number(freeCash) || 0,
       allocations: allocations.map(cat => ({
         category: cat.category,
-        target_pct: cat.target_pct / 100.0, // convert 60 to 0.6
+        target_pct: cat.target_pct / 100.0,
         assets: cat.assets.map(a => ({
-          ticker: a.ticker,
-          current_shares: Number(a.shares)
+          ticker: a.ticker.toUpperCase().trim(),
+          current_shares: Number(a.shares) || 0
         }))
       }))
     };
 
     try {
-      // Use environment variable for API URL, fallback to localhost for local dev
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await axios.post(`${apiUrl}/api/rebalance/calculate`, payload);
       setReportData(response.data);
@@ -143,44 +206,119 @@ export default function AllocationDashboard() {
           </div>
         </div>
 
-        {/* Asset Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Dynamic Asset Cards */}
+        <div className="grid grid-cols-1 gap-6">
           {allocations.map((item) => (
-            <div key={item.id} className="bg-slate-800/40 backdrop-blur-md border border-slate-700/50 p-5 rounded-2xl hover:border-slate-600/80 transition-colors">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-slate-200">{item.category}</h3>
-                <span className="text-xs font-mono bg-slate-700/50 text-slate-300 px-2 py-1 rounded">
-                  {item.assets.map(a => a.ticker).join(', ') || 'CASH'}
-                </span>
+            <div key={item.id} className="bg-slate-800/40 backdrop-blur-md border border-slate-700/50 p-6 rounded-2xl hover:border-slate-600/80 transition-colors">
+              
+              {/* Category Header */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/50 pb-4">
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <Edit2 size={16} className="text-slate-500" />
+                  <input 
+                    type="text"
+                    value={item.category}
+                    onChange={(e) => updateCategoryName(item.id, e.target.value)}
+                    className="bg-transparent border-b border-dashed border-slate-500 text-xl font-bold text-slate-100 focus:outline-none focus:border-blue-400 w-full md:w-48"
+                  />
+                </div>
+                
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <div className="flex items-center gap-3 flex-1 md:flex-none">
+                    <button 
+                      onClick={() => updateAllocationPct(item.id, item.target_pct - 1)}
+                      className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 transition-colors shrink-0"
+                    >
+                      <Minus size={16} />
+                    </button>
+                    <div className="relative w-24">
+                      <input
+                        type="number"
+                        value={item.target_pct}
+                        onChange={(e) => updateAllocationPct(item.id, e.target.value)}
+                        className="w-full bg-slate-900/50 border border-slate-600 rounded-lg py-1 px-3 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+                    </div>
+                    <button 
+                      onClick={() => updateAllocationPct(item.id, item.target_pct + 1)}
+                      className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 transition-colors shrink-0"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  
+                  <button 
+                    onClick={() => removeCategory(item.id)}
+                    className="text-slate-500 hover:text-red-400 transition-colors p-2"
+                    title="刪除此分類"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               </div>
               
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => updateAllocation(item.id, item.target_pct - 1)}
-                  className="w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 transition-colors"
-                >
-                  <Minus size={18} />
-                </button>
-                
-                <div className="flex-1 relative">
-                  <input
-                    type="number"
-                    value={item.target_pct}
-                    onChange={(e) => updateAllocation(item.id, e.target.value)}
-                    className="w-full bg-slate-900/50 border border-slate-600 rounded-xl py-2 px-4 text-center text-xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+              {/* Assets List */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center px-1">
+                  <h4 className="text-sm font-medium text-slate-400">成分股 (Assets)</h4>
                 </div>
+                
+                {item.assets.length === 0 && (
+                  <p className="text-sm text-slate-500 italic px-1">目前無指定標的，將視為持有現金或無需操作。</p>
+                )}
 
+                {item.assets.map((asset, idx) => (
+                  <div key={idx} className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30">
+                    <div className="flex-1 w-full relative">
+                      <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">標的代碼</label>
+                      <input 
+                        type="text" 
+                        placeholder="例如: QQQM, 0050.TW"
+                        value={asset.ticker}
+                        onChange={(e) => updateAsset(item.id, idx, 'ticker', e.target.value)}
+                        className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none uppercase"
+                      />
+                    </div>
+                    <div className="flex-1 w-full relative">
+                      <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">目前持股 (股)</label>
+                      <input 
+                        type="number" 
+                        placeholder="持股數"
+                        value={asset.shares}
+                        onChange={(e) => updateAsset(item.id, idx, 'shares', e.target.value)}
+                        className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => removeAsset(item.id, idx)}
+                      className="text-slate-500 hover:text-red-400 transition-colors p-2 w-full sm:w-auto flex justify-center"
+                      title="移除此標的"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                ))}
+                
                 <button 
-                  onClick={() => updateAllocation(item.id, item.target_pct + 1)}
-                  className="w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 transition-colors"
+                  onClick={() => addAsset(item.id)}
+                  className="mt-2 text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 px-2 py-1 rounded transition-colors hover:bg-slate-800"
                 >
-                  <Plus size={18} />
+                  <Plus size={14} /> 新增成分股
                 </button>
               </div>
+
             </div>
           ))}
+          
+          {/* Add Category Button */}
+          <button 
+            onClick={addCategory}
+            className="w-full border-2 border-dashed border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-300 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 transition-colors bg-slate-800/20 hover:bg-slate-800/40"
+          >
+            <Plus size={24} />
+            <span className="font-medium">新增資產類別 (Add Category)</span>
+          </button>
         </div>
 
         {/* Error Message */}
