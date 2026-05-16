@@ -186,39 +186,48 @@ class RebalanceEngine:
             
             asset_actions = []
             
-            if len(cat.assets) > 0 and abs(diff_amount) > 10: # 忽略小於 10 元的微小偏差
-                # 若該類別有多檔股票，此處採簡單的「均分買賣資金」策略
-                share_of_diff = diff_amount / len(cat.assets)
+            if len(cat.assets) > 0:
+                # 類別內的目標資金「均分」給每檔成分股 (Equal Weight Strategy)
+                asset_target_value = target_value / len(cat.assets)
                 
                 for asset in cat.assets:
                     price = verified_prices[asset.ticker]
-                    # 計算理想買賣股數
-                    ideal_shares_diff = share_of_diff / price
+                    asset_current_value = asset.current_shares * price
+                    # 計算單一標的的應買賣差額
+                    asset_diff = asset_target_value - asset_current_value
                     
-                    # 判斷買賣屬性與處理碎股邏輯
-                    if ideal_shares_diff > 0:
-                        action = "BUY"
-                        # 台股向下取整至整數股，美股支援碎股
-                        exec_shares = int(ideal_shares_diff) if asset.ticker.endswith(".TW") else round(ideal_shares_diff, 2)
-                        exec_amount = exec_shares * price
-                        cost = cls.calculate_fee_and_tax(asset.ticker, exec_amount, is_sell=False)
-                    else:
-                        action = "SELL"
-                        exec_shares = int(abs(ideal_shares_diff)) if asset.ticker.endswith(".TW") else round(abs(ideal_shares_diff), 2)
-                        exec_amount = exec_shares * price
-                        cost = cls.calculate_fee_and_tax(asset.ticker, exec_amount, is_sell=True)
-                    
-                    estimated_total_cost += cost
-                    
-                    if exec_shares > 0:
-                        asset_actions.append({
-                            "ticker": asset.ticker,
-                            "action": action,
-                            "shares": exec_shares,
-                            "price": price,
-                            "estimated_value": round(exec_amount, 2),
-                            "estimated_cost": round(cost, 2)
-                        })
+                    if abs(asset_diff) > 10: # 忽略小於 10 元的微小偏差
+                        ideal_shares_diff = asset_diff / price
+                        
+                        # 判斷買賣屬性與處理碎股邏輯
+                        if ideal_shares_diff > 0:
+                            action = "BUY"
+                            # 台股向下取整至整數股，美股支援碎股
+                            exec_shares = int(ideal_shares_diff) if asset.ticker.endswith(".TW") else round(ideal_shares_diff, 2)
+                            exec_amount = exec_shares * price
+                            cost = cls.calculate_fee_and_tax(asset.ticker, exec_amount, is_sell=False)
+                        else:
+                            action = "SELL"
+                            exec_shares = int(abs(ideal_shares_diff)) if asset.ticker.endswith(".TW") else round(abs(ideal_shares_diff), 2)
+                            
+                            # 防呆保護：避免因為小數點誤差導致建議賣出超過實際持有的股數
+                            if exec_shares > asset.current_shares:
+                                exec_shares = asset.current_shares
+                                
+                            exec_amount = exec_shares * price
+                            cost = cls.calculate_fee_and_tax(asset.ticker, exec_amount, is_sell=True)
+                        
+                        estimated_total_cost += cost
+                        
+                        if exec_shares > 0:
+                            asset_actions.append({
+                                "ticker": asset.ticker,
+                                "action": action,
+                                "shares": exec_shares,
+                                "price": price,
+                                "estimated_value": round(exec_amount, 2),
+                                "estimated_cost": round(cost, 2)
+                            })
 
             rebalance_reports.append({
                 "category": cat.category,
