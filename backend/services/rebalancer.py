@@ -1,10 +1,12 @@
 import asyncio
 import re
+import time
 import yfinance as yf
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, List, Any
 from pydantic import BaseModel
+from fastapi import HTTPException
 
 # ==========================================
 # 1. API 資料結構定義 (Pydantic Models)
@@ -27,6 +29,10 @@ class RebalanceRequest(BaseModel):
 # ==========================================
 # 2. 雙重驗證報價系統 (Dual-Verification)
 # ==========================================
+# 簡單的記憶體快取 (Memory Cache) 避免短時間內重複打 API 被鎖 IP
+_PRICE_CACHE = {}
+CACHE_TTL = 300 # 5 分鐘過期
+
 class PriceFetcher:
     @staticmethod
     def get_price_via_api(ticker: str) -> float:
@@ -41,7 +47,7 @@ class PriceFetcher:
             hist = stock.history(period="1d")
             if not hist.empty:
                 return float(hist['Close'].iloc[-1])
-            raise ValueError(f"無法透過 API 獲取 {ticker} 的價格")
+            return 0.0
         except Exception as e:
             print(f"API Fetch Error for {ticker}: {e}")
             return 0.0
@@ -62,7 +68,6 @@ class PriceFetcher:
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Yahoo Finance 傳統上將即時價格放在 fin-streamer 標籤中
-            # 尋找含有 data-field="regularMarketPrice" 且 data-symbol 等於 ticker 的元素
             price_element = soup.find("fin-streamer", {"data-field": "regularMarketPrice", "data-symbol": ticker})
             
             if price_element and price_element.get("value"):
@@ -79,25 +84,43 @@ class PriceFetcher:
             return 0.0
 
     @classmethod
-    def get_verified_price(cls, ticker: str) -> float:
-        """雙重驗證邏輯主入口"""
+    def get_verified_price_sync(cls, ticker: str) -> float:
+        """同步雙重驗證邏輯主入口"""
+        # 檢查快取
+        cached_data = _PRICE_CACHE.get(ticker)
+        if cached_data and (time.time() - cached_data['timestamp']) < CACHE_TTL:
+            return cached_data['price']
+
         api_price = cls.get_price_via_api(ticker)
         scraper_price = cls.get_price_via_scraper(ticker)
         
+        final_price = 0.0
         if api_price == 0.0 and scraper_price == 0.0:
-            raise Exception(f"【錯誤】標的 {ticker} 無法獲取任何市場報價，請檢查代號是否正確。")
+            raise HTTPException(status_code=400, detail=f"查無標的：{ticker}。無法獲取市場報價，請檢查代號是否正確 (台股請記得加上 .TW)。")
         
         # 如果兩者皆有值，比對偏差度
         if api_price > 0.0 and scraper_price > 0.0:
             deviation = abs(api_price - scraper_price) / api_price
             if deviation > 0.005: # 偏差超過 0.5% 時，以網頁爬蟲即時價格為準
                 print(f"【警報】{ticker} API ({api_price}) 與爬蟲 ({scraper_price}) 偏差過大，採用爬蟲價格。")
-                return scraper_price
-            return api_price
-        
-        # 某一邊失效時，採用另一邊的數值
-        return api_price if api_price > 0.0 else scraper_price
+                final_price = scraper_price
+            else:
+                final_price = api_price
+        else:
+            # 某一邊失效時，採用另一邊的數值
+            final_price = api_price if api_price > 0.0 else scraper_price
+            
+        # 存入快取
+        _PRICE_CACHE[ticker] = {
+            'price': final_price,
+            'timestamp': time.time()
+        }
+        return final_price
 
+    @classmethod
+    async def get_verified_price_async(cls, ticker: str) -> float:
+        """非同步雙重驗證邏輯主入口 (透過 asyncio.to_thread 防止阻塞)"""
+        return await asyncio.to_thread(cls.get_verified_price_sync, ticker)
 
 # ==========================================
 # 3. 再平衡與交易成本計算引擎
@@ -123,17 +146,27 @@ class RebalanceEngine:
         return cost
 
     @classmethod
-    def execute(cls, request: RebalanceRequest) -> Dict[str, Any]:
-        # 1. 獲取所有標的的驗證價格，並計算目前的各類別市值
-        verified_prices = {}
+    async def execute(cls, request: RebalanceRequest) -> Dict[str, Any]:
+        # 1. 收集所有需要報價的 Ticker 並非同步併發獲取
+        unique_tickers = set()
+        for cat in request.allocations:
+            for asset in cat.assets:
+                unique_tickers.add(asset.ticker)
+        
+        # 併發執行所有價格請求
+        fetch_tasks = [PriceFetcher.get_verified_price_async(ticker) for ticker in unique_tickers]
+        fetched_prices = await asyncio.gather(*fetch_tasks)
+        
+        # 建立 Ticker 到 Price 的映射表
+        verified_prices = dict(zip(unique_tickers, fetched_prices))
+        
         category_current_values = {}
         total_asset_value = 0.0
 
         for cat in request.allocations:
             cat_value = 0.0
             for asset in cat.assets:
-                price = PriceFetcher.get_verified_price(asset.ticker)
-                verified_prices[asset.ticker] = price
+                price = verified_prices[asset.ticker]
                 cat_value += asset.current_shares * price
             
             category_current_values[cat.category] = cat_value
@@ -154,7 +187,7 @@ class RebalanceEngine:
             asset_actions = []
             
             if len(cat.assets) > 0 and abs(diff_amount) > 10: # 忽略小於 10 元的微小偏差
-                # 若該類別有多檔股票，此處採簡單的「均分買賣資金」策略（可依需求調整為依權重分配）
+                # 若該類別有多檔股票，此處採簡單的「均分買賣資金」策略
                 share_of_diff = diff_amount / len(cat.assets)
                 
                 for asset in cat.assets:

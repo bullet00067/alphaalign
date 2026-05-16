@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
-import { Plus, Minus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2, ArrowRight, Trash2, Edit2 } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2 } from 'lucide-react';
+import AssetCategoryCard from './AssetCategoryCard';
+import SimulationReport from './SimulationReport';
 
 const INITIAL_ALLOCATIONS = [
   { id: '1', category: '市值型股票', target_pct: 60, assets: [{ ticker: 'QQQM', shares: 50 }, { ticker: '0050.TW', shares: 0 }] },
@@ -209,106 +211,16 @@ export default function AllocationDashboard() {
         {/* Dynamic Asset Cards */}
         <div className="grid grid-cols-1 gap-6">
           {allocations.map((item) => (
-            <div key={item.id} className="bg-slate-800/40 backdrop-blur-md border border-slate-700/50 p-6 rounded-2xl hover:border-slate-600/80 transition-colors">
-              
-              {/* Category Header */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/50 pb-4">
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                  <Edit2 size={16} className="text-slate-500" />
-                  <input 
-                    type="text"
-                    value={item.category}
-                    onChange={(e) => updateCategoryName(item.id, e.target.value)}
-                    className="bg-transparent border-b border-dashed border-slate-500 text-xl font-bold text-slate-100 focus:outline-none focus:border-blue-400 w-full md:w-48"
-                  />
-                </div>
-                
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                  <div className="flex items-center gap-3 flex-1 md:flex-none">
-                    <button 
-                      onClick={() => updateAllocationPct(item.id, item.target_pct - 1)}
-                      className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 transition-colors shrink-0"
-                    >
-                      <Minus size={16} />
-                    </button>
-                    <div className="relative w-24">
-                      <input
-                        type="number"
-                        value={item.target_pct}
-                        onChange={(e) => updateAllocationPct(item.id, e.target.value)}
-                        className="w-full bg-slate-900/50 border border-slate-600 rounded-lg py-1 px-3 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
-                    </div>
-                    <button 
-                      onClick={() => updateAllocationPct(item.id, item.target_pct + 1)}
-                      className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 transition-colors shrink-0"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-                  
-                  <button 
-                    onClick={() => removeCategory(item.id)}
-                    className="text-slate-500 hover:text-red-400 transition-colors p-2"
-                    title="刪除此分類"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-              
-              {/* Assets List */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center px-1">
-                  <h4 className="text-sm font-medium text-slate-400">成分股 (Assets)</h4>
-                </div>
-                
-                {item.assets.length === 0 && (
-                  <p className="text-sm text-slate-500 italic px-1">目前無指定標的，將視為持有現金或無需操作。</p>
-                )}
-
-                {item.assets.map((asset, idx) => (
-                  <div key={idx} className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30">
-                    <div className="flex-1 w-full relative">
-                      <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">標的代碼</label>
-                      <input 
-                        type="text" 
-                        placeholder="例如: QQQM, 0050.TW"
-                        value={asset.ticker}
-                        onChange={(e) => updateAsset(item.id, idx, 'ticker', e.target.value)}
-                        className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none uppercase"
-                      />
-                    </div>
-                    <div className="flex-1 w-full relative">
-                      <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">目前持股 (股)</label>
-                      <input 
-                        type="number" 
-                        placeholder="持股數"
-                        value={asset.shares}
-                        onChange={(e) => updateAsset(item.id, idx, 'shares', e.target.value)}
-                        className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
-                      />
-                    </div>
-                    <button 
-                      onClick={() => removeAsset(item.id, idx)}
-                      className="text-slate-500 hover:text-red-400 transition-colors p-2 w-full sm:w-auto flex justify-center"
-                      title="移除此標的"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                ))}
-                
-                <button 
-                  onClick={() => addAsset(item.id)}
-                  className="mt-2 text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 px-2 py-1 rounded transition-colors hover:bg-slate-800"
-                >
-                  <Plus size={14} /> 新增成分股
-                </button>
-              </div>
-
-            </div>
+            <AssetCategoryCard 
+              key={item.id}
+              item={item}
+              updateCategoryName={updateCategoryName}
+              updateAllocationPct={updateAllocationPct}
+              removeCategory={removeCategory}
+              updateAsset={updateAsset}
+              removeAsset={removeAsset}
+              addAsset={addAsset}
+            />
           ))}
           
           {/* Add Category Button */}
@@ -358,65 +270,7 @@ export default function AllocationDashboard() {
         </div>
 
         {/* Simulation Report Section */}
-        {reportData && (
-          <div className="mt-8 bg-slate-800/80 backdrop-blur-xl border border-blue-500/30 p-6 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-              <CheckCircle2 className="text-blue-400" /> 試算報告 (Simulation Report)
-            </h2>
-            
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                <p className="text-slate-400 text-sm mb-1">重分配後總資產淨值 (Total NAV)</p>
-                <p className="text-2xl font-bold">${reportData.total_nav.toLocaleString()}</p>
-              </div>
-              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                <p className="text-slate-400 text-sm mb-1">預估總交易成本 (Est. Fees & Taxes)</p>
-                <p className="text-2xl font-bold text-orange-400">${reportData.estimated_total_transaction_cost.toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {reportData.reports.map((report, idx) => (
-                <div key={idx} className="bg-slate-900/30 rounded-xl p-5 border border-slate-700/50">
-                  <div className="flex justify-between items-center mb-4">
-                    <div>
-                      <h3 className="font-semibold text-lg">{report.category}</h3>
-                      <p className="text-sm text-slate-400">目標比例: {report.target_pct}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-slate-400">現值 <ArrowRight className="inline w-3 h-3 mx-1" /> 目標</p>
-                      <p className="font-mono">${report.current_value.toLocaleString()} <ArrowRight className="inline w-3 h-3 mx-1 text-slate-600" /> ${report.target_value.toLocaleString()}</p>
-                    </div>
-                  </div>
-
-                  {report.actions && report.actions.length > 0 ? (
-                    <div className="space-y-2 mt-4 pt-4 border-t border-slate-700/50">
-                      {report.actions.map((action, aidx) => (
-                        <div key={aidx} className="flex justify-between items-center bg-slate-800/50 p-3 rounded-lg text-sm font-mono">
-                          <div className="flex items-center gap-3">
-                            <span className={`px-2 py-1 rounded font-bold ${action.action === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                              {action.action}
-                            </span>
-                            <span className="font-bold text-slate-200">{action.ticker}</span>
-                          </div>
-                          <div className="text-right">
-                            <p>{action.shares} 股 @ ${action.price}</p>
-                            <p className="text-xs text-slate-400 mt-1">成本: ${action.estimated_cost}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-4 pt-4 border-t border-slate-700/50 text-slate-500 text-sm flex items-center gap-2">
-                      <CheckCircle2 size={16} /> 無需調整
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-          </div>
-        )}
+        <SimulationReport reportData={reportData} />
 
       </div>
     </div>

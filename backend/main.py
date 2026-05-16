@@ -30,8 +30,10 @@ async def calculate_rebalance(request: RebalanceRequest):
     【僅單次試算】接收臨時比例與金額，執行雙重驗證並回傳買賣建議。
     """
     try:
-        result = RebalanceEngine.execute(request)
+        result = await RebalanceEngine.execute(request)
         return result
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
