@@ -55,7 +55,9 @@ export default function AllocationDashboard() {
     };
 
     try {
-      const response = await axios.post('http://localhost:8000/api/rebalance/calculate', payload);
+      // Use environment variable for API URL, fallback to localhost for local dev
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await axios.post(`${apiUrl}/api/rebalance/calculate`, payload);
       setReportData(response.data);
     } catch (err) {
       console.error(err);
