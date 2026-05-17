@@ -1,5 +1,5 @@
-import React from 'react';
-import { Plus, Minus, Trash2, Edit2, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Minus, Trash2, Edit2, Info, GripVertical } from 'lucide-react';
 
 export default function AssetCategoryCard({
   item,
@@ -8,12 +8,40 @@ export default function AssetCategoryCard({
   removeCategory,
   updateAsset,
   removeAsset,
-  addAsset
+  addAsset,
+  onMoveAsset
 }) {
+  const [isDragOver, setIsDragOver] = useState(false);
   const isCashCategory = item.category.includes('現金') || item.category.toUpperCase().includes('CASH');
 
   return (
-    <div className="bg-slate-800/40 backdrop-blur-md border border-slate-700/50 p-6 rounded-2xl hover:border-slate-600/80 transition-colors">
+    <div 
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        try {
+          const dataStr = e.dataTransfer.getData('text/plain');
+          if (dataStr) {
+            const { sourceCategoryId, assetIndex } = JSON.parse(dataStr);
+            if (onMoveAsset) {
+              onMoveAsset(sourceCategoryId, assetIndex, item.id);
+            }
+          }
+        } catch (err) {
+          console.error('Drop error:', err);
+        }
+      }}
+      className={`bg-slate-800/40 backdrop-blur-md border p-6 rounded-2xl transition-all duration-300 ${
+        isDragOver 
+          ? 'border-blue-500 bg-slate-800/80 shadow-[0_0_25px_rgba(59,130,246,0.3)] scale-[1.005]' 
+          : 'border-slate-700/50 hover:border-slate-600/80'
+      }`}
+    >
       
       {/* Category Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/50 pb-4">
@@ -68,16 +96,34 @@ export default function AssetCategoryCard({
           <h4 className="text-sm font-medium text-slate-400">{isCashCategory ? '現金項目 (Cash Assets)' : '成分股 (Assets)'}</h4>
           <Info size={14} className="text-slate-500 hover:text-blue-400" />
           <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-slate-700 text-xs text-slate-200 rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 pointer-events-none">
-            {isCashCategory ? '在此分類下的現金項目將會直接計入資產總額中。' : '此類別的目標資金將平均分配給以下所有標的 (Equal Weight)。'}
+            {isCashCategory ? '在此分類下的現金項目將會直接計入資產總額中。' : '此類別的目標資金將平均分配給以下所有標的 (Equal Weight)。可直接拖曳成分股至其他類別！'}
           </div>
         </div>
         
         {item.assets.length === 0 && (
-          <p className="text-sm text-slate-500 italic px-1">目前無指定標的，將視為持有現金或無需操作。</p>
+          <p className="text-sm text-slate-500 italic px-1 py-4 text-center border border-dashed border-slate-700/40 rounded-xl">
+            拖曳標的至此，或點擊下方新增成分股
+          </p>
         )}
 
         {item.assets.map((asset, idx) => (
-          <div key={idx} className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30">
+          <div 
+            key={idx} 
+            draggable={true}
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', JSON.stringify({
+                sourceCategoryId: item.id,
+                assetIndex: idx
+              }));
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30 cursor-grab active:cursor-grabbing hover:bg-slate-800/60 hover:border-slate-500/30 transition-all duration-200 group relative pl-9"
+          >
+            {/* Grip handle icon on the far left */}
+            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-blue-400 transition-colors pointer-events-none">
+              <GripVertical size={16} />
+            </div>
+
             <div className="flex-1 w-full relative">
               <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
                 {isCashCategory ? '項目名稱' : '標的代碼'}

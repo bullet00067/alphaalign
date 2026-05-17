@@ -135,6 +135,32 @@ export default function AllocationDashboard() {
     }));
   };
 
+  const moveAsset = (sourceCategoryId, sourceAssetIndex, targetCategoryId) => {
+    if (sourceCategoryId === targetCategoryId) return;
+    
+    const sourceCat = allocations.find(c => c.id === sourceCategoryId);
+    if (!sourceCat) return;
+    const assetToMove = sourceCat.assets[sourceAssetIndex];
+    if (!assetToMove) return;
+
+    setAllocations(allocations.map(cat => {
+      if (cat.id === sourceCategoryId) {
+        return {
+          ...cat,
+          assets: cat.assets.filter((_, idx) => idx !== sourceAssetIndex)
+        };
+      }
+      if (cat.id === targetCategoryId) {
+        return {
+          ...cat,
+          assets: [...cat.assets, assetToMove]
+        };
+      }
+      return cat;
+    }));
+    setReportData(null);
+  };
+
   // --- Map Allocation Payload Helper ---
   const getPayload = () => {
     return {
@@ -461,6 +487,7 @@ export default function AllocationDashboard() {
               updateAsset={updateAsset}
               removeAsset={removeAsset}
               addAsset={addAsset}
+              onMoveAsset={moveAsset}
             />
           ))}
           
