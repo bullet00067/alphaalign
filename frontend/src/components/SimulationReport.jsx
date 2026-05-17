@@ -45,10 +45,14 @@ export default function SimulationReport({ reportData }) {
                     </span>
                   )}
                 </h3>
-                <p className="text-sm text-slate-400">目標比例: {report.target_pct}</p>
+                <p className="text-sm text-slate-400">
+                  實際比例: <span className="font-semibold text-slate-300">{report.current_pct || '0%'}</span> <ArrowRight className="inline w-3 h-3 mx-1 text-slate-500" /> 目標比例: <span className="font-semibold text-blue-400">{report.target_pct}</span>
+                </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-slate-400">現值 <ArrowRight className="inline w-3 h-3 mx-1" /> 目標</p>
+                <p className="text-sm text-slate-400">
+                  現值 ({report.current_pct || '0%'}) <ArrowRight className="inline w-3 h-3 mx-1" /> 目標 ({report.target_pct})
+                </p>
                 <p className="font-mono">${report.current_value.toLocaleString()} <ArrowRight className="inline w-3 h-3 mx-1 text-slate-600" /> ${report.target_value.toLocaleString()}</p>
               </div>
             </div>

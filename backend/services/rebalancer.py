@@ -328,9 +328,11 @@ class RebalanceEngine:
                             
                             remaining_sell_amount -= exec_amount
 
+            current_pct = (current_value / total_nav) if total_nav > 0 else 0.0
             rebalance_reports.append({
                 "category": cat.category,
                 "target_pct": f"{round(cat.target_pct * 100, 2)}%",
+                "current_pct": f"{round(current_pct * 100, 2)}%",
                 "current_value": round(current_value, 2),
                 "unrealized_pnl": round(category_current_values[cat.category]["unrealized_pnl"], 2),
                 "target_value": round(target_value, 2),
