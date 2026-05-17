@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2 } from 'lucide-react';
 import AssetCategoryCard from './AssetCategoryCard';
 import SimulationReport from './SimulationReport';
+import HistoryView from './HistoryView';
 
 const INITIAL_ALLOCATIONS = [
   { id: '1', category: '市值型股票', target_pct: 60, assets: [{ ticker: 'QQQM', shares: 50, average_cost: 0 }, { ticker: '0050.TW', shares: 0, average_cost: 0 }] },
@@ -19,6 +20,7 @@ export default function AllocationDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState(null);
+  const [historyData, setHistoryData] = useState([]);
 
   const totalAllocation = useMemo(() => {
     return allocations.reduce((sum, item) => sum + (item.target_pct || 0), 0);
@@ -26,6 +28,21 @@ export default function AllocationDashboard() {
 
   const remaining = 100 - totalAllocation;
   const isPerfect = remaining === 0;
+
+  // --- Fetch History from API ---
+  const fetchHistory = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await axios.get(`${apiUrl}/api/rebalance/history`);
+      setHistoryData(response.data);
+    } catch (err) {
+      console.error("無法取得歷史紀錄:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   // --- Category Actions ---
   const addCategory = () => {
@@ -90,7 +107,24 @@ export default function AllocationDashboard() {
     }));
   };
 
-  // --- API Call ---
+  // --- Map Allocation Payload Helper ---
+  const getPayload = () => {
+    return {
+      deposit_cash: Number(depositCash) || 0,
+      current_free_cash: Number(freeCash) || 0,
+      allocations: allocations.map(cat => ({
+        category: cat.category,
+        target_pct: cat.target_pct / 100.0,
+        assets: cat.assets.map(a => ({
+          ticker: a.ticker.toUpperCase().trim(),
+          current_shares: Number(a.shares) || 0,
+          average_cost: Number(a.average_cost) || 0
+        }))
+      }))
+    };
+  };
+
+  // --- API Call: Simulate Only ---
   const handleSimulate = async () => {
     setIsLoading(true);
     setError(null);
@@ -107,23 +141,9 @@ export default function AllocationDashboard() {
       }
     }
 
-    const payload = {
-      deposit_cash: Number(depositCash) || 0,
-      current_free_cash: Number(freeCash) || 0,
-      allocations: allocations.map(cat => ({
-        category: cat.category,
-        target_pct: cat.target_pct / 100.0,
-        assets: cat.assets.map(a => ({
-          ticker: a.ticker.toUpperCase().trim(),
-          current_shares: Number(a.shares) || 0,
-          average_cost: Number(a.average_cost) || 0
-        }))
-      }))
-    };
-
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await axios.post(`${apiUrl}/api/rebalance/calculate`, payload);
+      const response = await axios.post(`${apiUrl}/api/rebalance/calculate`, getPayload());
       setReportData(response.data);
     } catch (err) {
       console.error(err);
@@ -131,6 +151,60 @@ export default function AllocationDashboard() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // --- API Call: Save & Rebalance ---
+  const handleSaveAndRebalance = async () => {
+    setIsLoading(true);
+    setError(null);
+    setReportData(null);
+
+    // Validate empty tickers
+    for (const cat of allocations) {
+      for (const asset of cat.assets) {
+        if (!asset.ticker.trim()) {
+          setError(`請填寫「${cat.category}」中所有標的的代號 (Ticker)`);
+          setIsLoading(false);
+          return;
+        }
+      }
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await axios.post(`${apiUrl}/api/rebalance/save`, getPayload());
+      setReportData(response.data.data);
+      fetchHistory(); // Refresh the list
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || "無法連線至伺服器或發生未知錯誤");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Restore configuration from a past snapshot ---
+  const handleRestore = (snapshot) => {
+    if (!snapshot) return;
+    
+    const restoredAllocations = snapshot.allocations.map((cat, idx) => ({
+      id: (idx + 1).toString(),
+      category: cat.category,
+      target_pct: Math.round(cat.target_pct * 100),
+      assets: cat.assets.map(a => ({
+        ticker: a.ticker,
+        shares: a.current_shares,
+        average_cost: a.average_cost || 0
+      }))
+    }));
+    
+    setAllocations(restoredAllocations);
+    setDepositCash(snapshot.deposit_cash || 0);
+    setFreeCash(snapshot.current_free_cash || 0);
+    setReportData(null);
+    setError(null);
+    
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -259,19 +333,23 @@ export default function AllocationDashboard() {
           
           <button 
             disabled={!isPerfect || isLoading}
+            onClick={handleSaveAndRebalance}
             className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all ${
               !isPerfect || isLoading
                 ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'
             }`}
           >
-            <Save size={20} />
-            更新配置並產出報告 (Save & Rebalance)
+            {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+            {isLoading ? '正在進行儲存並計算...' : '更新配置並產出報告 (Save & Rebalance)'}
           </button>
         </div>
 
         {/* Simulation Report Section */}
         <SimulationReport reportData={reportData} />
+
+        {/* Historical Track section */}
+        <HistoryView historyData={historyData} onRestore={handleRestore} />
 
       </div>
     </div>

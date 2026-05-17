@@ -1,6 +1,13 @@
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load .env file for local development
+load_dotenv()
+
 from services.rebalancer import RebalanceRequest, RebalanceEngine
+from services.supabase_db import SupabaseDB
 
 app = FastAPI(
     title="AlphaAlign API",
@@ -36,6 +43,42 @@ async def calculate_rebalance(request: RebalanceRequest):
         raise he
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/rebalance/save")
+async def save_rebalance(request: RebalanceRequest):
+    """
+    【儲存配置與歷史】計算當前狀態並將其存入 Supabase 歷史紀錄中。
+    """
+    try:
+        result = await RebalanceEngine.execute(request)
+        
+        # 儲存至 Supabase
+        db_res = SupabaseDB.save_history(
+            total_nav=result["total_nav"],
+            total_cost=result["total_cost_basis"],
+            unrealized_pnl=result["total_unrealized_pnl"],
+            roi_pct=result["total_roi_pct"],
+            snapshot=request.model_dump()
+        )
+        
+        if db_res["status"] == "error":
+            raise HTTPException(status_code=500, detail=db_res["message"])
+            
+        return {"status": "success", "data": result}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/rebalance/history")
+async def get_rebalance_history():
+    """
+    【獲取歷史紀錄】從 Supabase 獲取歷次存檔的資產變化紀錄。
+    """
+    if not SupabaseDB.is_configured():
+        # 若未設定 Supabase 金鑰，回傳空陣列而非報錯，方便本機端測試
+        return []
+    return SupabaseDB.get_history()
 
 @app.put("/api/allocations/targets")
 async def save_allocation_targets(request: dict):
