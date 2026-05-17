@@ -102,7 +102,13 @@ export default function AssetCategoryCard({
         </div>
         
         {item.assets.length === 0 && (
-             <div 
+          <p className="text-sm text-slate-500 italic px-1 py-4 text-center border border-dashed border-slate-700/40 rounded-xl">
+            拖曳標的至此，或點擊下方新增成分股
+          </p>
+        )}
+
+        {item.assets.map((asset, idx) => (
+          <div 
             key={idx} 
             draggable={true}
             onDragStart={(e) => {
