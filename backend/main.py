@@ -3,11 +3,15 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from pydantic import BaseModel
 # Load .env file for local development
 load_dotenv()
 
 from services.rebalancer import RebalanceRequest, RebalanceEngine
 from services.supabase_db import SupabaseDB
+
+class WizardRequest(BaseModel):
+    input_text: str
 
 app = FastAPI(
     title="AlphaAlign API",
@@ -86,3 +90,16 @@ async def save_allocation_targets(request: dict):
     【儲存設定】更新資料庫中該用戶的目標配置比例 (Mock 實作)
     """
     return {"message": "Not implemented yet"}
+
+@app.post("/api/rebalance/parse-wizard")
+async def parse_wizard(request: WizardRequest):
+    """
+    【智慧一鍵配置精靈】解析輸入文字並返回智慧分類歸納後的卡片配置
+    """
+    try:
+        from services.wizard_classifier import WizardClassifier
+        result = await WizardClassifier.parse_and_group(request.input_text)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

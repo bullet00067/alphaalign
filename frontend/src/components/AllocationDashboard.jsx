@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2 } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2, Sparkles } from 'lucide-react';
 import AssetCategoryCard from './AssetCategoryCard';
 import SimulationReport from './SimulationReport';
 import HistoryView from './HistoryView';
@@ -21,6 +21,12 @@ export default function AllocationDashboard() {
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState(null);
   const [historyData, setHistoryData] = useState([]);
+
+  // --- Smart Portfolio Wizard State ---
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [wizardText, setWizardText] = useState('');
+  const [isWizardLoading, setIsWizardLoading] = useState(false);
+  const [wizardSuccess, setWizardSuccess] = useState(false);
 
   const totalAllocation = useMemo(() => {
     return allocations.reduce((sum, item) => sum + (item.target_pct || 0), 0);
@@ -207,6 +213,45 @@ export default function AllocationDashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleWizardSubmit = async () => {
+    if (!wizardText.trim()) return;
+    setIsWizardLoading(true);
+    setError(null);
+    setWizardSuccess(false);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await axios.post(`${apiUrl}/api/rebalance/parse-wizard`, {
+        input_text: wizardText
+      });
+      if (response.data && response.data.length > 0) {
+        const newAllocations = response.data.map((cat, idx) => ({
+          id: (idx + 1).toString(),
+          category: cat.category,
+          target_pct: cat.target_pct,
+          assets: cat.assets.map(a => ({
+            ticker: a.ticker,
+            shares: a.shares || 0,
+            average_cost: a.average_cost || 0
+          }))
+        }));
+        setAllocations(newAllocations);
+        setWizardSuccess(true);
+        setReportData(null);
+        setTimeout(() => {
+          setWizardSuccess(false);
+          setIsWizardOpen(false);
+        }, 1500);
+      } else {
+        setError("未能解析出任何有效的標的或比例，請檢查輸入格式。");
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || "智慧導入解析失敗，請稍後再試。");
+    } finally {
+      setIsWizardLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-50 p-6 md:p-12 font-sans pb-24">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -221,6 +266,103 @@ export default function AllocationDashboard() {
               互動式資產再平衡與監控平台
             </p>
           </div>
+        </div>
+
+        {/* Smart Portfolio Wizard */}
+        <div className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 backdrop-blur-xl border border-indigo-500/20 p-6 rounded-2xl shadow-xl transition-all duration-300">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Sparkles className="text-yellow-400 animate-pulse" size={20} />
+              <h2 className="text-lg font-semibold text-white tracking-wide">🧙‍♂️ 智慧一鍵配置精靈 (Smart Import)</h2>
+            </div>
+            <button
+              onClick={() => setIsWizardOpen(!isWizardOpen)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 transition-all"
+            >
+              {isWizardOpen ? '收合精靈 (Collapse)' : '展開精靈 (Expand)'}
+            </button>
+          </div>
+
+          {isWizardOpen && (
+            <div className="mt-5 space-y-4 border-t border-indigo-500/10 pt-4 transition-all animate-fadeIn">
+              <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+                直接貼上您的資產分配計畫（例如：從 ChatGPT 產生的計畫或是手寫筆記）。
+                系統會自動解析代號，並幫您自動分類至<strong>「市值型」、「高股息」、「美債」、「現金」</strong>中！
+              </p>
+
+              {/* Textarea */}
+              <div className="relative">
+                <textarea
+                  rows={4}
+                  value={wizardText}
+                  onChange={(e) => setWizardText(e.target.value)}
+                  placeholder={`請輸入您的資產分配計畫，例如：
+0050 30%
+0056 25%
+00679B 30%
+台幣活存 15%`}
+                  className="w-full bg-slate-900/80 border border-indigo-500/20 rounded-xl p-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent font-mono"
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-400 mr-1">快速套用範例：</span>
+                <button
+                  type="button"
+                  onClick={() => setWizardText("0050 30%\n0056 25%\n00679B 30%\n台幣活存 15%")}
+                  className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                >
+                  經典台股配置 (30/25/30/15)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWizardText("VOO 40%\nSCHD 20%\nTLT 30%\nUSD_美金現金 10%")}
+                  className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                >
+                  經典美股平衡型 (40/20/30/10)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWizardText("QQQM 40%\n2330 30%\n00878 15%\n外幣活存 15%")}
+                  className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                >
+                  台美科技雙引擎 (40/30/15/15)
+                </button>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setWizardText('')}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                >
+                  清空 (Clear)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleWizardSubmit}
+                  disabled={isWizardLoading || !wizardText.trim()}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {isWizardLoading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={14} /> 解析中...
+                    </>
+                  ) : wizardSuccess ? (
+                    <>
+                      <CheckCircle2 size={14} className="text-green-300" /> 導入成功！
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} /> 一鍵智慧分類導入 (Import)
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Unallocated Pool Progress */}
