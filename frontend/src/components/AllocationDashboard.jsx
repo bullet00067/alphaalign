@@ -136,21 +136,24 @@ export default function AllocationDashboard() {
   };
 
   const moveAsset = (sourceCategoryId, sourceAssetIndex, targetCategoryId) => {
-    if (sourceCategoryId === targetCategoryId) return;
+    const sId = sourceCategoryId.toString();
+    const tId = targetCategoryId.toString();
+    if (sId === tId) return;
     
-    const sourceCat = allocations.find(c => c.id === sourceCategoryId);
+    const sourceCat = allocations.find(c => c.id.toString() === sId);
     if (!sourceCat) return;
     const assetToMove = sourceCat.assets[sourceAssetIndex];
     if (!assetToMove) return;
 
     setAllocations(allocations.map(cat => {
-      if (cat.id === sourceCategoryId) {
+      const cId = cat.id.toString();
+      if (cId === sId) {
         return {
           ...cat,
           assets: cat.assets.filter((_, idx) => idx !== sourceAssetIndex)
         };
       }
-      if (cat.id === targetCategoryId) {
+      if (cId === tId) {
         return {
           ...cat,
           assets: [...cat.assets, assetToMove]

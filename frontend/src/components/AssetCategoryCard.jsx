@@ -102,13 +102,7 @@ export default function AssetCategoryCard({
         </div>
         
         {item.assets.length === 0 && (
-          <p className="text-sm text-slate-500 italic px-1 py-4 text-center border border-dashed border-slate-700/40 rounded-xl">
-            拖曳標的至此，或點擊下方新增成分股
-          </p>
-        )}
-
-        {item.assets.map((asset, idx) => (
-          <div 
+             <div 
             key={idx} 
             draggable={true}
             onDragStart={(e) => {
@@ -118,79 +112,88 @@ export default function AssetCategoryCard({
               }));
               e.dataTransfer.effectAllowed = 'move';
             }}
-            className="flex flex-col lg:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30 cursor-grab active:cursor-grabbing hover:bg-slate-800/60 hover:border-slate-500/30 transition-all duration-200 group relative pl-9 pr-3"
+            className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3 bg-slate-900/40 p-4 lg:p-3 rounded-xl border border-slate-700/30 cursor-grab active:cursor-grabbing hover:bg-slate-800/60 hover:border-slate-500/30 transition-all duration-200 group relative pl-9 pr-10 lg:pr-3"
           >
             {/* Grip handle icon on the far left */}
             <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-blue-400 transition-colors pointer-events-none">
               <GripVertical size={16} />
             </div>
 
-            <div className="flex-1 w-full relative">
-              <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
-                {isCashCategory ? '項目名稱' : '標的代碼'}
-              </label>
-              <input 
-                type="text" 
-                placeholder={isCashCategory ? "例如: 台幣活存" : "例如: QQQM"}
-                value={asset.ticker}
-                onChange={(e) => updateAsset(item.id, idx, 'ticker', e.target.value)}
-                className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none uppercase"
-              />
-            </div>
-            <div className="flex-1 w-full relative">
-              <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
-                {isCashCategory ? '目前金額 ($)' : '目前持股 (股)'}
-              </label>
-              <input 
-                type="number" 
-                placeholder={isCashCategory ? "金額" : "持股數"}
-                value={asset.shares}
-                onChange={(e) => updateAsset(item.id, idx, 'shares', e.target.value)}
-                className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            {!isCashCategory && (
-              <div className="flex-1 w-full relative">
-                <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
+            {/* Inner responsive layout grid */}
+            <div className="grid grid-cols-2 lg:flex lg:flex-row items-center gap-3 w-full">
+              {/* Ticker Input - Full width on mobile, flexible on desktop */}
+              <div className="col-span-2 lg:flex-1 relative">
+                <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
+                  {isCashCategory ? '項目名稱' : '標的代碼'}
+                </label>
                 <input 
-                  type="number" 
-                  placeholder="選填"
-                  value={asset.average_cost}
-                  onChange={(e) => updateAsset(item.id, idx, 'average_cost', e.target.value)}
-                  className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
+                  type="text" 
+                  placeholder={isCashCategory ? "例如: 台幣活存" : "例如: QQQM"}
+                  value={asset.ticker}
+                  onChange={(e) => updateAsset(item.id, idx, 'ticker', e.target.value)}
+                  className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none uppercase text-sm lg:text-base"
                 />
               </div>
-            )}
 
-            {/* Mobile/Tablet Fallback Category Selector (Always responsive & beautiful) */}
-            {categories.length > 1 && (
-              <div className="w-full lg:w-auto relative shrink-0">
-                <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded block lg:hidden">
-                  移至分類 (Move to)
+              {/* Shares Input - Half width on mobile (or full if cash), flexible on desktop */}
+              <div className={`${isCashCategory ? 'col-span-2 lg:flex-1' : 'col-span-1 lg:flex-1'} relative`}>
+                <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
+                  {isCashCategory ? '目前金額 ($)' : '目前持股 (股)'}
                 </label>
-                <select 
-                  value={item.id}
-                  onChange={(e) => {
-                    const targetCatId = Number(e.target.value) || e.target.value;
-                    if (targetCatId !== item.id && onMoveAsset) {
-                      onMoveAsset(item.id, idx, targetCatId);
-                    }
-                  }}
-                  className="w-full lg:w-32 bg-slate-900/60 border border-slate-600 rounded-lg py-2 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none cursor-pointer"
-                >
-                  <option value={item.id} disabled>移動分類...</option>
-                  {categories.filter(c => c.id !== item.id).map(c => (
-                    <option key={c.id} value={c.id}>
-                      ➡ {c.name || '未命名分類'}
-                    </option>
-                  ))}
-                </select>
+                <input 
+                  type="number" 
+                  placeholder={isCashCategory ? "金額" : "持股數"}
+                  value={asset.shares}
+                  onChange={(e) => updateAsset(item.id, idx, 'shares', e.target.value)}
+                  className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none text-sm lg:text-base"
+                />
               </div>
-            )}
 
+              {/* Average Cost Input - Half width on mobile, hidden if cash, flexible on desktop */}
+              {!isCashCategory && (
+                <div className="col-span-1 lg:flex-1 relative">
+                  <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
+                  <input 
+                    type="number" 
+                    placeholder="選填"
+                    value={asset.average_cost}
+                    onChange={(e) => updateAsset(item.id, idx, 'average_cost', e.target.value)}
+                    className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none text-sm lg:text-base"
+                  />
+                </div>
+              )}
+
+              {/* Mobile/Tablet Fallback Category Selector - Full width on mobile, compact on desktop */}
+              {categories.length > 1 && (
+                <div className="col-span-2 lg:w-auto relative shrink-0">
+                  <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded block lg:hidden">
+                    移至分類 (Move to)
+                  </label>
+                  <select 
+                    value={item.id}
+                    onChange={(e) => {
+                      const targetCatId = e.target.value.toString();
+                      if (targetCatId !== item.id && onMoveAsset) {
+                        onMoveAsset(item.id, idx, targetCatId);
+                      }
+                    }}
+                    className="w-full lg:w-32 bg-slate-900/60 border border-slate-600 rounded-lg py-2 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value={item.id} disabled>移動分類...</option>
+                    {categories.filter(c => c.id !== item.id).map(c => (
+                      <option key={c.id} value={c.id}>
+                        ➡ {c.name || '未命名分類'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Trash button - Absolute positioned in the top-right corner on mobile, static on desktop */}
             <button 
               onClick={() => removeAsset(item.id, idx)}
-              className="text-slate-500 hover:text-red-400 transition-colors p-2 w-full lg:w-auto flex justify-center shrink-0"
+              className="absolute right-2.5 top-2.5 lg:static text-slate-500 hover:text-red-400 transition-colors p-2 lg:p-1.5 flex justify-center shrink-0"
               title="移除此標的"
             >
               <Trash2 size={18} />
