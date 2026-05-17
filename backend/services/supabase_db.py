@@ -38,8 +38,11 @@ class SupabaseDB:
             if response.status_code in [200, 201]:
                 return {"status": "success", "data": response.json()}
             else:
-                print(f"Supabase Save Error: {response.status_code} - {response.text}")
-                return {"status": "error", "message": f"Supabase API returned {response.status_code}: {response.text}"}
+                error_msg = response.text
+                if "42501" in error_msg or "row-level security" in error_msg.lower():
+                    error_msg += " (提示：Supabase 的資料列安全性原則 (RLS) 已啟用。最推薦的解決方法是將 backend/.env 中的 SUPABASE_KEY 換成您的 'service_role' 金鑰以安全地繞過限制；或是至 Supabase SQL 編輯器輸入指令以關閉 rebalance_history 資料表的 RLS 機制。)"
+                print(f"Supabase Save Error: {response.status_code} - {error_msg}")
+                return {"status": "error", "message": f"Supabase API returned {response.status_code}: {error_msg}"}
         except Exception as e:
             print(f"Supabase Connection Exception: {e}")
             return {"status": "error", "message": str(e)}
