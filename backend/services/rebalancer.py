@@ -127,19 +127,67 @@ class PriceFetcher:
 # 3. 再平衡與交易成本計算引擎
 # ==========================================
 class RebalanceEngine:
+    @classmethod
+    def resolve_ticker(cls, ticker: str) -> str:
+        """
+        智慧代碼解析 (防呆機制)：
+        如果輸入不含 '.' 且看起來像是台股 (純數字如 0050, 或 00679B 這種含字母代碼)：
+        1. 優先嘗試加 '.TW' (上市股票/ETF)
+        2. 若沒找到，嘗試加 '.TWO' (上櫃股票/ETF)
+        3. 若都找不到或不符合台股特徵，則維持原樣 (當作美股處理如 QQQM)
+        """
+        ticker_cleaned = ticker.strip().upper()
+        if "." in ticker_cleaned:
+            return ticker_cleaned
+
+        # 判斷是否符合台股特徵：
+        # 1. 4-6位純數字 (如 2330, 0050, 006208)
+        # 2. 5-6位數字加字母 (如 00679B, 00715L, 00632R)
+        if re.match(r'^\d+[A-Z]?$', ticker_cleaned):
+            # 嘗試 .TW
+            tw_candidate = f"{ticker_cleaned}.TW"
+            try:
+                stock_tw = yf.Ticker(tw_candidate)
+                # fast_info.get 如果順利代表是有效的上市標的
+                if stock_tw.fast_info.get('last_price') is not None:
+                    return tw_candidate
+            except Exception:
+                pass
+
+            # 嘗試 .TWO
+            two_candidate = f"{ticker_cleaned}.TWO"
+            try:
+                stock_two = yf.Ticker(two_candidate)
+                if stock_two.fast_info.get('last_price') is not None:
+                    return two_candidate
+            except Exception:
+                pass
+
+            # 啟發式安全回退：如果是以 'B' 結尾的通常是上櫃債券 ETF
+            if ticker_cleaned.endswith('B'):
+                return two_candidate
+            return tw_candidate
+
+        return ticker_cleaned
+
     @staticmethod
     def calculate_fee_and_tax(ticker: str, amount: float, is_sell: bool) -> float:
         """
         估算交易成本
-        台股 (.TW): 手續費 0.1425%, 賣出證交稅 0.3%
-        美股 (無 .TW): 假設為海外券商或複委託固定成本 (此處以微量交易滑價 0.05% 暫代)
+        台股 (.TW 或 .TWO): 手續費 0.1425%, 賣出證交稅 0.3% (債券 ETF 免徵證交稅)
+        美股 (其他): 假設為海外券商或複委託固定成本 (此處以微量交易滑價 0.05% 暫代)
         """
         cost = 0.0
-        if ticker.endswith(".TW"):
+        if ticker.endswith(".TW") or ticker.endswith(".TWO"):
             # 台股手續費 (假設券商打 6 折)
             broker_fee = amount * 0.001425 * 0.6
             cost += max(broker_fee, 20.0) # 台股通常有最低手續費 20 元限制
-            if is_sell:
+            
+            # 判斷是否為債券 ETF (代碼尾數為 B，如 00679B)，政府免徵證交稅
+            symbol_part = ticker.split(".")[0]
+            is_bond_etf = symbol_part.endswith("B")
+            
+            if is_sell and not is_bond_etf:
                 cost += amount * 0.003 # 證交稅 0.3%
         else:
             # 美股基本成本模擬
@@ -148,6 +196,11 @@ class RebalanceEngine:
 
     @classmethod
     async def execute(cls, request: RebalanceRequest) -> Dict[str, Any]:
+        # 0. 智慧解析與校正所有標的代號 (防呆機制)
+        for cat in request.allocations:
+            for asset in cat.assets:
+                asset.ticker = cls.resolve_ticker(asset.ticker)
+
         # 1. 收集所有需要報價的 Ticker 並非同步併發獲取
         unique_tickers = set()
         for cat in request.allocations:
