@@ -13,9 +13,18 @@ const INITIAL_ALLOCATIONS = [
 ];
 
 export default function AllocationDashboard() {
-  const [allocations, setAllocations] = useState(INITIAL_ALLOCATIONS);
-  const [depositCash, setDepositCash] = useState(0);
-  const [freeCash, setFreeCash] = useState(0);
+  const [allocations, setAllocations] = useState(() => {
+    const saved = localStorage.getItem('alphaalign_allocations');
+    return saved ? JSON.parse(saved) : INITIAL_ALLOCATIONS;
+  });
+  const [depositCash, setDepositCash] = useState(() => {
+    const saved = localStorage.getItem('alphaalign_deposit_cash');
+    return saved !== null ? Number(saved) : 0;
+  });
+  const [freeCash, setFreeCash] = useState(() => {
+    const saved = localStorage.getItem('alphaalign_free_cash');
+    return saved !== null ? Number(saved) : 0;
+  });
   
   const [isLoading, setIsLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
@@ -49,6 +58,19 @@ export default function AllocationDashboard() {
   useEffect(() => {
     fetchHistory();
   }, []);
+
+  // --- Persist active session states locally ---
+  useEffect(() => {
+    localStorage.setItem('alphaalign_allocations', JSON.stringify(allocations));
+  }, [allocations]);
+
+  useEffect(() => {
+    localStorage.setItem('alphaalign_deposit_cash', depositCash);
+  }, [depositCash]);
+
+  useEffect(() => {
+    localStorage.setItem('alphaalign_free_cash', freeCash);
+  }, [freeCash]);
 
   // --- Category Actions ---
   const addCategory = () => {
@@ -286,22 +308,24 @@ export default function AllocationDashboard() {
           {isWizardOpen && (
             <div className="mt-5 space-y-4 border-t border-indigo-500/10 pt-4 transition-all animate-fadeIn">
               <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
-                直接貼上您的資產分配計畫（例如：從 ChatGPT 產生的計畫或是手寫筆記）。
-                系統會自動解析代號，並幫您自動分類至<strong>「市值型」、「高股息」、「美債」、「現金」</strong>中！
+                支援兩階段混合導入：您可以先配置<strong>大類別目標百分比</strong>（例如 <code>市值型 50%, 高股息 40%</code>），並貼上<strong>成分股持股明細（含股數與成交均價）</strong>。系統會自動辨識並完成歸屬與記帳！
               </p>
 
               {/* Textarea */}
               <div className="relative">
                 <textarea
-                  rows={4}
+                  rows={6}
                   value={wizardText}
                   onChange={(e) => setWizardText(e.target.value)}
-                  placeholder={`請輸入您的資產分配計畫，例如：
-0050 30%
-0056 25%
-00679B 30%
-台幣活存 15%`}
-                  className="w-full bg-slate-900/80 border border-indigo-500/20 rounded-xl p-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent font-mono"
+                  placeholder={`1.先配置資產類型百分比
+市值型 50%, 高股息型 40%, 債券型 5%, 現金 5%
+
+2.設定成分股後，自動將這些成分股依照系統判斷排入各項資產類型
+006208 1516股 均價109.14
+00679B 3306股 均價 28.32
+00712 3201股 均價 9.57
+台幣活存 50000`}
+                  className="w-full bg-slate-900/80 border border-indigo-500/20 rounded-xl p-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent font-mono"
                 />
               </div>
 
@@ -310,24 +334,24 @@ export default function AllocationDashboard() {
                 <span className="text-xs text-slate-400 mr-1">快速套用範例：</span>
                 <button
                   type="button"
-                  onClick={() => setWizardText("0050 30%\n0056 25%\n00679B 30%\n台幣活存 15%")}
+                  onClick={() => setWizardText("1.先配置資產類型百分比\n市值型 50%, 高股息型 40%, 債券型 5%, 現金 5%\n\n2.設定成分股後， 自動將這些成分股依照系統判斷排入各項資產類型\n006208 1516股 均價109.14\n00679B 3306股 均價 28.32\n00712 3201股 均價 9.57\n00878 22856股 均價 19.74\n00881 2000股 均價 15.13\n2330 11股 均價 1847.72\n台幣活存 50000")}
                   className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
                 >
-                  經典台股配置 (30/25/30/15)
+                  兩階段混合台股配置
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWizardText("VOO 40%\nSCHD 20%\nTLT 30%\nUSD_美金現金 10%")}
+                  onClick={() => setWizardText("1.先配置資產類型百分比\n市值型 60%, 高股息型 10%, 債券型 20%, 現金 10%\n\n2.設定成分股後， 自動將這些成分股依照系統判斷排入各項資產類型\nVOO 50股 均價 460.50\nQQQM 30股 均價 175.20\nSCHD 25股 均價 78.40\nTLT 100股 均價 92.15\n美元現金 8500")}
                   className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
                 >
-                  經典美股平衡型 (40/20/30/10)
+                  全球股債平衡型 (美股)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWizardText("QQQM 40%\n2330 30%\n00878 15%\n外幣活存 15%")}
+                  onClick={() => setWizardText("1.先配置資產類型百分比\n市值型 45%, 高股息型 45%, 債券型 5%, 現金 5%\n\n2.設定成分股後， 自動將這些成分股依照系統判斷排入各項資產類型\n2330 500股 均價 780.00\n0050 1500股 均價 152.40\n00919 5000股 均價 22.15\n00878 8000股 均價 20.80\n00679B 1000股 均價 29.50\nTWD活存 35000")}
                   className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
                 >
-                  台美科技雙引擎 (40/30/15/15)
+                  台美科技高優息組合
                 </button>
               </div>
 

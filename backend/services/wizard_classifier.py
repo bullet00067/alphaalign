@@ -17,7 +17,7 @@ class WizardClassifier:
         
         # 高股息類
         "0056": "高股息", "00878": "高股息", "00919": "高股息", "00929": "高股息", "00713": "高股息",
-        "00934": "高股息", "00940": "高股息", "00915": "高股息", "00918": "高股息",
+        "00934": "高股息", "00940": "高股息", "00915": "高股息", "00918": "高股息", "00712": "高股息", "00881": "高股息",
         "SCHD": "高股息", "VYM": "高股息", "SDY": "高股息", "DVY": "高股息", "DGRO": "高股息",
         
         # 市值型
@@ -80,76 +80,138 @@ class WizardClassifier:
     @classmethod
     async def parse_and_group(cls, input_text: str) -> List[Dict[str, Any]]:
         """
-        解析文字並依資產類別進行分組與合併
-        範例輸入: "0050 30%, 0056 20%, 00679B 30%, 現金 20%"
+        智慧解析文字並依資產類別進行分組與合併
+        相容新舊格式：
+        1. 類別目標分配比：市值型 50%, 高股息型 40%, 債券型 5%, 現金 5%
+        2. 持股成分股數/均價：006208 1516股 均價109.14 或 台幣活存 50000
         """
-        # 正則表達式：提取標的名稱/代碼 與 百分比比例
-        # 支持 "0050 30%", "VOO:25", "00679B=20", "台幣活存 15%"
-        pattern = re.compile(r'([a-zA-Z0-9_\.\u4e00-\u9fa5]+)\s*[:=\s]+\s*(\d+(?:\.\d+)?)\s*%?')
-        
-        raw_items = []
-        # 分行或分逗號/分號解析
-        lines = re.split(r'[\n,;]+', input_text)
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            match = pattern.search(line)
-            if match:
-                ticker_part = match.group(1).strip()
-                pct_part = float(match.group(2).strip())
-                raw_items.append((ticker_part, pct_part))
-
-        if not raw_items:
-            return []
-
-        # 非同步併發判定所有標的類別
-        tasks = [cls.classify_ticker_async(item[0]) for item in raw_items]
-        categories = await asyncio.gather(*tasks)
-
-        # 彙整至四大類別
-        # 初始化預設四大卡片
+        # 初始化預設四大類別
         groups = {
-            "市值": {"category": "市值", "target_pct": 0.0, "assets": []},
-            "高股息": {"category": "高股息", "target_pct": 0.0, "assets": []},
-            "美債": {"category": "美債", "target_pct": 0.0, "assets": []},
+            "市值": {"category": "市值型股票", "target_pct": 0.0, "assets": []},
+            "高股息": {"category": "高股息型", "target_pct": 0.0, "assets": []},
+            "美債": {"category": "美國公債", "target_pct": 0.0, "assets": []},
             "現金": {"category": "現金", "target_pct": 0.0, "assets": []}
         }
 
-        for (ticker, pct), cat_name in zip(raw_items, categories):
-            # 智慧代碼解析補完 (.TW / .TWO / CASH_)
-            is_cash = cat_name == "現金"
-            
-            if is_cash:
-                ticker_upper = ticker.upper()
-                if not ticker_upper.startswith("CASH_") and ticker_upper != "CASH":
-                    resolved_ticker = f"CASH_{ticker_upper}" if ticker_upper else "CASH"
-                else:
-                    resolved_ticker = ticker_upper
-                avg_cost = 1.0
-            else:
-                resolved_ticker = RebalanceEngine.resolve_ticker(ticker)
-                avg_cost = 0.0 # 預設待填
-            
-            # 加入資產明細
-            asset_detail = {
-                "ticker": resolved_ticker,
-                "shares": 0.0,      # 智慧建置初始持股預設為 0
-                "average_cost": avg_cost
-            }
-            
-            # 將比例加總至該分類
-            if cat_name in groups:
-                groups[cat_name]["target_pct"] += pct
-                groups[cat_name]["assets"].append(asset_detail)
-            else:
-                # 容錯處理：若有其他自訂類別，動態新增
-                if cat_name not in groups:
-                    groups[cat_name] = {"category": cat_name, "target_pct": 0.0, "assets": []}
-                groups[cat_name]["target_pct"] += pct
-                groups[cat_name]["assets"].append(asset_detail)
+        # 用於匹配類別目標比例的 Regex
+        pat_cat = re.compile(
+            r'(市值型|市值|高股息型|高股息|債券型|債券|美債|美國公債|現金|CASH)\s*[:=\s]?\s*(\d+(?:\.\d+)?)\s*%?',
+            re.IGNORECASE
+        )
 
-        # 整理輸出，過濾掉比例為 0 且沒有資產的空卡片，並取小數兩位
+        # 用於匹配成份股持股的 Regex
+        pat_hold = re.compile(
+            r'^([a-zA-Z0-9_\.\u4e00-\u9fa5]+)\s+(\d+(?:\.\d+)?)\s*(?:股|元)?\s*(?:均價|平均成本|成本|price)?\s*(\d+(?:\.\d+)?)?$',
+            re.IGNORECASE
+        )
+
+        # 按行切分
+        lines = re.split(r'[\n,;]+', input_text)
+        
+        # 1. 偵測是否含有類別目標比例宣告 (e.g. 市值型 50%)
+        has_cat_targets = False
+        for line in lines:
+            if pat_cat.search(line):
+                if any(x in line for x in ["型", "%", "百分比", "配置", "比例"]):
+                    has_cat_targets = True
+                    break
+                matches = pat_cat.findall(line)
+                if len(matches) >= 2:
+                    has_cat_targets = True
+                    break
+
+        holdings_to_classify = []
+
+        if has_cat_targets:
+            # 2A. 新格式：兩階段智慧配置導入
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # 解析類別比例
+                cat_matches = pat_cat.findall(line)
+                if cat_matches and (any(x in line for x in ["型", "%", "百分比", "配置", "比例", "先配置"]) or len(cat_matches) >= 2):
+                    for cat_label, pct_str in cat_matches:
+                        val = float(pct_str)
+                        if cat_label in ["市值型", "市值"]:
+                            groups["市值"]["target_pct"] = val
+                        elif cat_label in ["高股息型", "高股息"]:
+                            groups["高股息"]["target_pct"] = val
+                        elif cat_label in ["債券型", "債券", "美債", "美國公債"]:
+                            groups["美債"]["target_pct"] = val
+                        elif cat_label in ["現金", "CASH"]:
+                            groups["現金"]["target_pct"] = val
+                    continue
+
+                # 解析持股成分股數/均價
+                cleaned_line = re.sub(r'^\d+[\.\)\]、]\s*', '', line).strip()
+                hold_match = pat_hold.match(cleaned_line)
+                if hold_match:
+                    ticker = hold_match.group(1).strip()
+                    val1 = float(hold_match.group(2).strip())
+                    val2_str = hold_match.group(3)
+                    val2 = float(val2_str.strip()) if val2_str else None
+                    
+                    holdings_to_classify.append((ticker, val1, val2))
+            is_fallback_mode = False
+
+        else:
+            # 2B. 舊格式：純比例回退導入
+            fallback_pattern = re.compile(r'([a-zA-Z0-9_\.\u4e00-\u9fa5]+)\s*[:=\s]+\s*(\d+(?:\.\d+)?)\s*%?')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                match = fallback_pattern.search(line)
+                if match:
+                    ticker = match.group(1).strip()
+                    pct = float(match.group(2).strip())
+                    holdings_to_classify.append((ticker, pct, None))
+            is_fallback_mode = True
+
+        if holdings_to_classify:
+            # 異步分類所有標的
+            tasks = [cls.classify_ticker_async(item[0]) for item in holdings_to_classify]
+            categories = await asyncio.gather(*tasks)
+
+            for (ticker, val1, val2), cat_name in zip(holdings_to_classify, categories):
+                is_cash = cat_name == "現金"
+                
+                if is_cash:
+                    ticker_upper = ticker.upper()
+                    if not ticker_upper.startswith("CASH_") and ticker_upper != "CASH":
+                        resolved_ticker = f"CASH_{ticker_upper}" if ticker_upper else "CASH"
+                    else:
+                        resolved_ticker = ticker_upper
+                    
+                    if is_fallback_mode:
+                        shares = 0.0
+                        avg_cost = 1.0
+                        groups[cat_name]["target_pct"] += val1
+                    else:
+                        shares = val1
+                        avg_cost = 1.0
+                else:
+                    resolved_ticker = RebalanceEngine.resolve_ticker(ticker)
+                    if is_fallback_mode:
+                        shares = 0.0
+                        avg_cost = 0.0
+                        groups[cat_name]["target_pct"] += val1
+                    else:
+                        shares = val1
+                        avg_cost = val2 if val2 is not None else 1.0
+
+                asset_detail = {
+                    "ticker": resolved_ticker,
+                    "shares": shares,
+                    "average_cost": avg_cost
+                }
+
+                if cat_name in groups:
+                    groups[cat_name]["assets"].append(asset_detail)
+
+        # 整理輸出
         result = []
         for cat_data in groups.values():
             cat_data["target_pct"] = round(cat_data["target_pct"], 2)
