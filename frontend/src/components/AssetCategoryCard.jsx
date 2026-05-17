@@ -97,7 +97,7 @@ export default function AssetCategoryCard({
               />
             </div>
             <div className="flex-1 w-full relative">
-              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">平均成本 ($)</label>
+              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
               <input 
                 type="number" 
                 placeholder="選填"
