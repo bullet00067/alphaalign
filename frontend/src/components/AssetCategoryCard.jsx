@@ -80,7 +80,7 @@ export default function AssetCategoryCard({
               <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">標的代碼</label>
               <input 
                 type="text" 
-                placeholder="例如: QQQM, 0050.TW"
+                placeholder="例如: QQQM"
                 value={asset.ticker}
                 onChange={(e) => updateAsset(item.id, idx, 'ticker', e.target.value)}
                 className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none uppercase"
@@ -93,6 +93,16 @@ export default function AssetCategoryCard({
                 placeholder="持股數"
                 value={asset.shares}
                 onChange={(e) => updateAsset(item.id, idx, 'shares', e.target.value)}
+                className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex-1 w-full relative">
+              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">平均成本 ($)</label>
+              <input 
+                type="number" 
+                placeholder="選填"
+                value={asset.average_cost}
+                onChange={(e) => updateAsset(item.id, idx, 'average_cost', e.target.value)}
                 className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
               />
             </div>

@@ -14,6 +14,7 @@ from fastapi import HTTPException
 class AssetInput(BaseModel):
     ticker: str          # 例如: "QQQM", "2330.TW"
     current_shares: float # 持有股數
+    average_cost: float = 0.0 # 平均成本
 
 class CategoryAllocation(BaseModel):
     category: str        # 例如: "市值型股票", "現金"
@@ -162,15 +163,27 @@ class RebalanceEngine:
         
         category_current_values = {}
         total_asset_value = 0.0
+        total_cost_basis = 0.0
 
         for cat in request.allocations:
             cat_value = 0.0
+            cat_cost_basis = 0.0
             for asset in cat.assets:
                 price = verified_prices[asset.ticker]
-                cat_value += asset.current_shares * price
+                asset_value = asset.current_shares * price
+                cat_value += asset_value
+                cat_cost_basis += asset.current_shares * asset.average_cost
             
-            category_current_values[cat.category] = cat_value
+            category_current_values[cat.category] = {
+                "value": cat_value,
+                "cost_basis": cat_cost_basis,
+                "unrealized_pnl": cat_value - cat_cost_basis if cat_cost_basis > 0 else 0
+            }
             total_asset_value += cat_value
+            total_cost_basis += cat_cost_basis
+
+        total_unrealized_pnl = total_asset_value - total_cost_basis if total_cost_basis > 0 else 0
+        total_roi = (total_unrealized_pnl / total_cost_basis) if total_cost_basis > 0 else 0
 
         # 納入活水資金與閒置現金
         total_nav = total_asset_value + request.deposit_cash + request.current_free_cash
@@ -181,7 +194,7 @@ class RebalanceEngine:
         # 2. 依據自訂比例計算各類別差額
         for cat in request.allocations:
             target_value = total_nav * cat.target_pct
-            current_value = category_current_values[cat.category]
+            current_value = category_current_values[cat.category]["value"]
             diff_amount = target_value - current_value # 正數代表要買，負數代表要賣
             
             asset_actions = []
@@ -252,6 +265,7 @@ class RebalanceEngine:
                 "category": cat.category,
                 "target_pct": f"{round(cat.target_pct * 100, 2)}%",
                 "current_value": round(current_value, 2),
+                "unrealized_pnl": round(category_current_values[cat.category]["unrealized_pnl"], 2),
                 "target_value": round(target_value, 2),
                 "diff_amount": round(diff_amount, 2),
                 "actions": asset_actions
@@ -259,6 +273,10 @@ class RebalanceEngine:
 
         return {
             "total_nav": round(total_nav, 2),
+            "total_asset_value": round(total_asset_value, 2),
+            "total_cost_basis": round(total_cost_basis, 2),
+            "total_unrealized_pnl": round(total_unrealized_pnl, 2),
+            "total_roi_pct": round(total_roi * 100, 2),
             "estimated_total_transaction_cost": round(estimated_total_cost, 2),
             "reports": rebalance_reports
         }

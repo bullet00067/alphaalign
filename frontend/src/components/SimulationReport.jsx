@@ -10,14 +10,25 @@ export default function SimulationReport({ reportData }) {
         <CheckCircle2 className="text-blue-400" /> 試算報告 (Simulation Report)
       </h2>
       
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-          <p className="text-slate-400 text-sm mb-1">重分配後總資產淨值 (Total NAV)</p>
+          <p className="text-slate-400 text-sm mb-1">重分配後淨值 (Total NAV)</p>
           <p className="text-2xl font-bold">${reportData.total_nav.toLocaleString()}</p>
         </div>
         <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-          <p className="text-slate-400 text-sm mb-1">預估總交易成本 (Est. Fees & Taxes)</p>
-          <p className="text-2xl font-bold text-orange-400">${reportData.estimated_total_transaction_cost.toLocaleString()}</p>
+          <p className="text-slate-400 text-sm mb-1">總投資成本 (Total Cost)</p>
+          <p className="text-xl font-bold">${reportData.total_cost_basis.toLocaleString()}</p>
+        </div>
+        <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+          <p className="text-slate-400 text-sm mb-1">未實現損益 (Unrealized P&L)</p>
+          <p className={`text-xl font-bold ${reportData.total_unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {reportData.total_unrealized_pnl >= 0 ? '+' : ''}{reportData.total_unrealized_pnl.toLocaleString()} 
+            <span className="text-sm ml-1">({reportData.total_roi_pct}%)</span>
+          </p>
+        </div>
+        <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+          <p className="text-slate-400 text-sm mb-1">預估手續費 (Est. Fees)</p>
+          <p className="text-xl font-bold text-orange-400">${reportData.estimated_total_transaction_cost.toLocaleString()}</p>
         </div>
       </div>
 
@@ -26,7 +37,14 @@ export default function SimulationReport({ reportData }) {
           <div key={idx} className="bg-slate-900/30 rounded-xl p-5 border border-slate-700/50">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="font-semibold text-lg">{report.category}</h3>
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  {report.category}
+                  {report.unrealized_pnl !== 0 && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${report.unrealized_pnl > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                      {report.unrealized_pnl > 0 ? '+' : ''}{report.unrealized_pnl.toLocaleString()}
+                    </span>
+                  )}
+                </h3>
                 <p className="text-sm text-slate-400">目標比例: {report.target_pct}</p>
               </div>
               <div className="text-right">

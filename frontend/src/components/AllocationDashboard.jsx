@@ -5,9 +5,9 @@ import AssetCategoryCard from './AssetCategoryCard';
 import SimulationReport from './SimulationReport';
 
 const INITIAL_ALLOCATIONS = [
-  { id: '1', category: '市值型股票', target_pct: 60, assets: [{ ticker: 'QQQM', shares: 50 }, { ticker: '0050.TW', shares: 0 }] },
-  { id: '2', category: '高股息型', target_pct: 20, assets: [{ ticker: 'QYLD', shares: 100 }] },
-  { id: '3', category: '美國公債', target_pct: 15, assets: [{ ticker: 'TLT', shares: 30 }] },
+  { id: '1', category: '市值型股票', target_pct: 60, assets: [{ ticker: 'QQQM', shares: 50, average_cost: 0 }, { ticker: '0050.TW', shares: 0, average_cost: 0 }] },
+  { id: '2', category: '高股息型', target_pct: 20, assets: [{ ticker: 'QYLD', shares: 100, average_cost: 0 }] },
+  { id: '3', category: '美國公債', target_pct: 15, assets: [{ ticker: 'TLT', shares: 30, average_cost: 0 }] },
   { id: '4', category: '現金', target_pct: 5, assets: [] }
 ];
 
@@ -61,7 +61,7 @@ export default function AllocationDashboard() {
   const addAsset = (categoryId) => {
     setAllocations(allocations.map(a => {
       if (a.id === categoryId) {
-        return { ...a, assets: [...a.assets, { ticker: '', shares: 0 }] };
+        return { ...a, assets: [...a.assets, { ticker: '', shares: 0, average_cost: 0 }] };
       }
       return a;
     }));
@@ -115,7 +115,8 @@ export default function AllocationDashboard() {
         target_pct: cat.target_pct / 100.0,
         assets: cat.assets.map(a => ({
           ticker: a.ticker.toUpperCase().trim(),
-          current_shares: Number(a.shares) || 0
+          current_shares: Number(a.shares) || 0,
+          average_cost: Number(a.average_cost) || 0
         }))
       }))
     };
