@@ -1,9 +1,12 @@
 import os
 import requests
+import json
+from datetime import datetime
 from typing import List, Dict, Any
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+LOCAL_DB_FILE = "rebalance_history.json"
 
 class SupabaseDB:
     @staticmethod
@@ -63,4 +66,47 @@ class SupabaseDB:
                 return []
         except Exception as e:
             print(f"Supabase Connection Exception: {e}")
+            return []
+
+    # --- Local Database Fallback (Self-Healing) ---
+    @classmethod
+    def save_local(cls, total_nav: float, total_cost: float, unrealized_pnl: float, roi_pct: float, snapshot: List[Any]) -> Dict[str, Any]:
+        try:
+            records = []
+            if os.path.exists(LOCAL_DB_FILE):
+                with open(LOCAL_DB_FILE, "r", encoding="utf-8") as f:
+                    try:
+                        records = json.load(f)
+                    except Exception:
+                        records = []
+
+            new_record = {
+                "id": f"local_{int(datetime.utcnow().timestamp())}",
+                "created_at": datetime.utcnow().isoformat() + "Z",
+                "total_nav": total_nav,
+                "total_cost": total_cost,
+                "unrealized_pnl": unrealized_pnl,
+                "roi_pct": roi_pct,
+                "snapshot": snapshot,
+                "is_local": True
+            }
+            records.insert(0, new_record)
+
+            with open(LOCAL_DB_FILE, "w", encoding="utf-8") as f:
+                json.dump(records, f, ensure_ascii=False, indent=2)
+
+            return {"status": "success", "data": new_record}
+        except Exception as e:
+            print(f"Local Fallback Save Error: {e}")
+            return {"status": "error", "message": f"Local storage fallback failed: {e}"}
+
+    @classmethod
+    def get_local(cls) -> List[Dict[str, Any]]:
+        try:
+            if os.path.exists(LOCAL_DB_FILE):
+                with open(LOCAL_DB_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            return []
+        except Exception as e:
+            print(f"Local Fallback Load Error: {e}")
             return []

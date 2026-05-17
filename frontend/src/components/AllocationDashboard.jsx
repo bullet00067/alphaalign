@@ -481,6 +481,7 @@ export default function AllocationDashboard() {
             <AssetCategoryCard 
               key={item.id}
               item={item}
+              categories={allocations.map(c => ({ id: c.id, name: c.category }))}
               updateCategoryName={updateCategoryName}
               updateAllocationPct={updateAllocationPct}
               removeCategory={removeCategory}

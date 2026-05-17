@@ -9,7 +9,8 @@ export default function AssetCategoryCard({
   updateAsset,
   removeAsset,
   addAsset,
-  onMoveAsset
+  onMoveAsset,
+  categories = []
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const isCashCategory = item.category.includes('現金') || item.category.toUpperCase().includes('CASH');
@@ -96,7 +97,7 @@ export default function AssetCategoryCard({
           <h4 className="text-sm font-medium text-slate-400">{isCashCategory ? '現金項目 (Cash Assets)' : '成分股 (Assets)'}</h4>
           <Info size={14} className="text-slate-500 hover:text-blue-400" />
           <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-slate-700 text-xs text-slate-200 rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 pointer-events-none">
-            {isCashCategory ? '在此分類下的現金項目將會直接計入資產總額中。' : '此類別的目標資金將平均分配給以下所有標的 (Equal Weight)。可直接拖曳成分股至其他類別！'}
+            {isCashCategory ? '在此分類下的現金項目將會直接計入資產總額中。' : '此類別的目標資金將平均分配給以下所有標的 (Equal Weight)。可直接拖曳成分股至其他類別！手機平板等觸控裝置可直接使用選單一鍵移動。'}
           </div>
         </div>
         
@@ -117,7 +118,7 @@ export default function AssetCategoryCard({
               }));
               e.dataTransfer.effectAllowed = 'move';
             }}
-            className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30 cursor-grab active:cursor-grabbing hover:bg-slate-800/60 hover:border-slate-500/30 transition-all duration-200 group relative pl-9"
+            className="flex flex-col lg:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30 cursor-grab active:cursor-grabbing hover:bg-slate-800/60 hover:border-slate-500/30 transition-all duration-200 group relative pl-9 pr-3"
           >
             {/* Grip handle icon on the far left */}
             <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-blue-400 transition-colors pointer-events-none">
@@ -125,7 +126,7 @@ export default function AssetCategoryCard({
             </div>
 
             <div className="flex-1 w-full relative">
-              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
+              <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
                 {isCashCategory ? '項目名稱' : '標的代碼'}
               </label>
               <input 
@@ -137,7 +138,7 @@ export default function AssetCategoryCard({
               />
             </div>
             <div className="flex-1 w-full relative">
-              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
+              <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
                 {isCashCategory ? '目前金額 ($)' : '目前持股 (股)'}
               </label>
               <input 
@@ -150,7 +151,7 @@ export default function AssetCategoryCard({
             </div>
             {!isCashCategory && (
               <div className="flex-1 w-full relative">
-                <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
+                <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
                 <input 
                   type="number" 
                   placeholder="選填"
@@ -160,9 +161,36 @@ export default function AssetCategoryCard({
                 />
               </div>
             )}
+
+            {/* Mobile/Tablet Fallback Category Selector (Always responsive & beautiful) */}
+            {categories.length > 1 && (
+              <div className="w-full lg:w-auto relative shrink-0">
+                <label className="text-[10px] text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded block lg:hidden">
+                  移至分類 (Move to)
+                </label>
+                <select 
+                  value={item.id}
+                  onChange={(e) => {
+                    const targetCatId = Number(e.target.value) || e.target.value;
+                    if (targetCatId !== item.id && onMoveAsset) {
+                      onMoveAsset(item.id, idx, targetCatId);
+                    }
+                  }}
+                  className="w-full lg:w-32 bg-slate-900/60 border border-slate-600 rounded-lg py-2 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none cursor-pointer"
+                >
+                  <option value={item.id} disabled>移動分類...</option>
+                  {categories.filter(c => c.id !== item.id).map(c => (
+                    <option key={c.id} value={c.id}>
+                      ➡ {c.name || '未命名分類'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <button 
               onClick={() => removeAsset(item.id, idx)}
-              className="text-slate-500 hover:text-red-400 transition-colors p-2 w-full sm:w-auto flex justify-center"
+              className="text-slate-500 hover:text-red-400 transition-colors p-2 w-full lg:w-auto flex justify-center shrink-0"
               title="移除此標的"
             >
               <Trash2 size={18} />

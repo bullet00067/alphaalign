@@ -51,12 +51,12 @@ async def calculate_rebalance(request: RebalanceRequest):
 @app.post("/api/rebalance/save")
 async def save_rebalance(request: RebalanceRequest):
     """
-    【儲存配置與歷史】計算當前狀態並將其存入 Supabase 歷史紀錄中。
+    【儲存配置與歷史】計算當前狀態並將其存入 Supabase/本地 歷史紀錄中。
     """
     try:
         result = await RebalanceEngine.execute(request)
         
-        # 儲存至 Supabase
+        # 嘗試儲存至 Supabase
         db_res = SupabaseDB.save_history(
             total_nav=result["total_nav"],
             total_cost=result["total_cost_basis"],
@@ -65,8 +65,18 @@ async def save_rebalance(request: RebalanceRequest):
             snapshot=request.model_dump()
         )
         
+        # 【自癒降級機制】若 Supabase 儲存失敗（例如 RLS 政策阻擋或連線問題），自動改存至本地 JSON
         if db_res["status"] == "error":
-            raise HTTPException(status_code=500, detail=db_res["message"])
+            print(f"Supabase 儲存失敗 ({db_res['message']})，自動啟用本地備份資料庫...")
+            local_res = SupabaseDB.save_local(
+                total_nav=result["total_nav"],
+                total_cost=result["total_cost_basis"],
+                unrealized_pnl=result["total_unrealized_pnl"],
+                roi_pct=result["total_roi_pct"],
+                snapshot=request.model_dump()
+            )
+            if local_res["status"] == "error":
+                raise HTTPException(status_code=500, detail=local_res["message"])
             
         return {"status": "success", "data": result}
     except HTTPException as he:
@@ -77,12 +87,29 @@ async def save_rebalance(request: RebalanceRequest):
 @app.get("/api/rebalance/history")
 async def get_rebalance_history():
     """
-    【獲取歷史紀錄】從 Supabase 獲取歷次存檔的資產變化紀錄。
+    【獲取歷史紀錄】整合 Supabase 雲端與本地 JSON 備份的資產變化歷史。
     """
-    if not SupabaseDB.is_configured():
-        # 若未設定 Supabase 金鑰，回傳空陣列而非報錯，方便本機端測試
-        return []
-    return SupabaseDB.get_history()
+    history = []
+    if SupabaseDB.is_configured():
+        history = SupabaseDB.get_history()
+        
+    local_history = SupabaseDB.get_local()
+    
+    # 整合兩者（以ID去重並依照創建時間排序）
+    combined = []
+    seen_ids = set()
+    
+    for item in history:
+        combined.append(item)
+        if "id" in item:
+            seen_ids.add(item["id"])
+            
+    for item in local_history:
+        if item.get("id") not in seen_ids:
+            combined.append(item)
+            
+    combined.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return combined
 
 @app.put("/api/allocations/targets")
 async def save_allocation_targets(request: dict):
