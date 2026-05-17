@@ -87,6 +87,11 @@ class PriceFetcher:
     @classmethod
     def get_verified_price_sync(cls, ticker: str) -> float:
         """同步雙重驗證邏輯主入口"""
+        ticker_upper = ticker.strip().upper()
+        # 現金標的價格恆為 1.0
+        if ticker_upper in ["CASH", "TWD", "NTD", "USD", "CNY", "EUR", "JPY"] or ticker_upper.startswith("CASH_"):
+            return 1.0
+
         # 檢查快取
         cached_data = _PRICE_CACHE.get(ticker)
         if cached_data and (time.time() - cached_data['timestamp']) < CACHE_TTL:
@@ -198,8 +203,17 @@ class RebalanceEngine:
     async def execute(cls, request: RebalanceRequest) -> Dict[str, Any]:
         # 0. 智慧解析與校正所有標的代號 (防呆機制)
         for cat in request.allocations:
+            is_cash_cat = "現金" in cat.category or "CASH" in cat.category.upper()
             for asset in cat.assets:
-                asset.ticker = cls.resolve_ticker(asset.ticker)
+                if is_cash_cat:
+                    ticker_upper = asset.ticker.strip().upper()
+                    if not ticker_upper.startswith("CASH_") and ticker_upper != "CASH":
+                        asset.ticker = f"CASH_{ticker_upper}" if ticker_upper else "CASH"
+                    else:
+                        asset.ticker = ticker_upper
+                    asset.average_cost = 1.0
+                else:
+                    asset.ticker = cls.resolve_ticker(asset.ticker)
 
         # 1. 收集所有需要報價的 Ticker 並非同步併發獲取
         unique_tickers = set()

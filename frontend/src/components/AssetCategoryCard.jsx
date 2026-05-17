@@ -10,6 +10,8 @@ export default function AssetCategoryCard({
   removeAsset,
   addAsset
 }) {
+  const isCashCategory = item.category.includes('現金') || item.category.toUpperCase().includes('CASH');
+
   return (
     <div className="bg-slate-800/40 backdrop-blur-md border border-slate-700/50 p-6 rounded-2xl hover:border-slate-600/80 transition-colors">
       
@@ -63,10 +65,10 @@ export default function AssetCategoryCard({
       {/* Assets List */}
       <div className="space-y-3">
         <div className="flex items-center gap-2 px-1 relative group cursor-help">
-          <h4 className="text-sm font-medium text-slate-400">成分股 (Assets)</h4>
+          <h4 className="text-sm font-medium text-slate-400">{isCashCategory ? '現金項目 (Cash Assets)' : '成分股 (Assets)'}</h4>
           <Info size={14} className="text-slate-500 hover:text-blue-400" />
           <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-slate-700 text-xs text-slate-200 rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 pointer-events-none">
-            此類別的目標資金將平均分配給以下所有標的 (Equal Weight)。
+            {isCashCategory ? '在此分類下的現金項目將會直接計入資產總額中。' : '此類別的目標資金將平均分配給以下所有標的 (Equal Weight)。'}
           </div>
         </div>
         
@@ -77,35 +79,41 @@ export default function AssetCategoryCard({
         {item.assets.map((asset, idx) => (
           <div key={idx} className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-700/30">
             <div className="flex-1 w-full relative">
-              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">標的代碼</label>
+              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
+                {isCashCategory ? '項目名稱' : '標的代碼'}
+              </label>
               <input 
                 type="text" 
-                placeholder="例如: QQQM"
+                placeholder={isCashCategory ? "例如: 台幣活存" : "例如: QQQM"}
                 value={asset.ticker}
                 onChange={(e) => updateAsset(item.id, idx, 'ticker', e.target.value)}
                 className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none uppercase"
               />
             </div>
             <div className="flex-1 w-full relative">
-              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">目前持股 (股)</label>
+              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">
+                {isCashCategory ? '目前金額 ($)' : '目前持股 (股)'}
+              </label>
               <input 
                 type="number" 
-                placeholder="持股數"
+                placeholder={isCashCategory ? "金額" : "持股數"}
                 value={asset.shares}
                 onChange={(e) => updateAsset(item.id, idx, 'shares', e.target.value)}
                 className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
               />
             </div>
-            <div className="flex-1 w-full relative">
-              <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
-              <input 
-                type="number" 
-                placeholder="選填"
-                value={asset.average_cost}
-                onChange={(e) => updateAsset(item.id, idx, 'average_cost', e.target.value)}
-                className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
-              />
-            </div>
+            {!isCashCategory && (
+              <div className="flex-1 w-full relative">
+                <label className="text-xs text-slate-500 absolute -top-2 left-2 bg-slate-800 px-1 rounded">成交均價 ($)</label>
+                <input 
+                  type="number" 
+                  placeholder="選填"
+                  value={asset.average_cost}
+                  onChange={(e) => updateAsset(item.id, idx, 'average_cost', e.target.value)}
+                  className="w-full bg-transparent border border-slate-600 rounded-lg py-2 px-3 text-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            )}
             <button 
               onClick={() => removeAsset(item.id, idx)}
               className="text-slate-500 hover:text-red-400 transition-colors p-2 w-full sm:w-auto flex justify-center"
