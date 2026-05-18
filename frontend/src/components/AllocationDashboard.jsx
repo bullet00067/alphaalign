@@ -29,6 +29,9 @@ export default function AllocationDashboard() {
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [editAccountName, setEditAccountName] = useState('');
 
+  // Ref to prevent race condition saves during account switching
+  const isSwitchingRef = React.useRef(false);
+
   // Active Portfolio States (parameterized by currentAccountId)
   const [allocations, setAllocations] = useState(() => {
     const activeId = localStorage.getItem('alphaalign_current_account_id') || 'default';
@@ -86,19 +89,29 @@ export default function AllocationDashboard() {
 
   // --- Persist active session states locally ---
   useEffect(() => {
+    if (isSwitchingRef.current) return;
     localStorage.setItem(`alphaalign_allocations_${currentAccountId}`, JSON.stringify(allocations));
   }, [allocations, currentAccountId]);
 
   useEffect(() => {
+    if (isSwitchingRef.current) return;
     localStorage.setItem(`alphaalign_deposit_cash_${currentAccountId}`, depositCash.toString());
   }, [depositCash, currentAccountId]);
 
   useEffect(() => {
+    if (isSwitchingRef.current) return;
     localStorage.setItem(`alphaalign_free_cash_${currentAccountId}`, freeCash.toString());
   }, [freeCash, currentAccountId]);
 
+  // Reset the switching flag last
+  useEffect(() => {
+    isSwitchingRef.current = false;
+  }, [currentAccountId]);
+
   // --- Account Management Core Handlers ---
   const handleSwitchAccount = (accountId) => {
+    isSwitchingRef.current = true;
+
     // 1. Save current account values
     localStorage.setItem(`alphaalign_allocations_${currentAccountId}`, JSON.stringify(allocations));
     localStorage.setItem(`alphaalign_deposit_cash_${currentAccountId}`, depositCash.toString());
@@ -134,6 +147,7 @@ export default function AllocationDashboard() {
     localStorage.setItem(`alphaalign_free_cash_${newId}`, freeCash.toString());
 
     // Switch to it immediately
+    isSwitchingRef.current = true;
     setCurrentAccountId(newId);
     localStorage.setItem('alphaalign_current_account_id', newId);
     setReportData(null);
