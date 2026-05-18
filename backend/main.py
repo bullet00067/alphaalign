@@ -85,9 +85,9 @@ async def save_rebalance(request: RebalanceRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/rebalance/history")
-async def get_rebalance_history():
+async def get_rebalance_history(account_id: str = "default"):
     """
-    【獲取歷史紀錄】整合 Supabase 雲端與本地 JSON 備份的資產變化歷史。
+    【獲取歷史紀錄】整合 Supabase 雲端與本地 JSON 備份的資產變化歷史，並按 account_id 過濾。
     """
     history = []
     if SupabaseDB.is_configured():
@@ -100,13 +100,20 @@ async def get_rebalance_history():
     seen_ids = set()
     
     for item in history:
-        combined.append(item)
-        if "id" in item:
-            seen_ids.add(item["id"])
+        # 從 snapshot 解析關聯的 account_id，若無則歸為 "default"
+        snap = item.get("snapshot", {}) or {}
+        item_account_id = snap.get("account_id", "default")
+        if item_account_id == account_id:
+            combined.append(item)
+            if "id" in item:
+                seen_ids.add(item["id"])
             
     for item in local_history:
         if item.get("id") not in seen_ids:
-            combined.append(item)
+            snap = item.get("snapshot", {}) or {}
+            item_account_id = snap.get("account_id", "default")
+            if item_account_id == account_id:
+                combined.append(item)
             
     combined.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return combined

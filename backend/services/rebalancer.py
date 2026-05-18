@@ -22,6 +22,7 @@ class CategoryAllocation(BaseModel):
     assets: List[AssetInput]
 
 class RebalanceRequest(BaseModel):
+    account_id: str = "default" # 關聯的券商帳戶 ID
     deposit_cash: float  # 本次預計額外投入的資金
     current_free_cash: float # 目前未投入的閒置現金
     allocations: List[CategoryAllocation]

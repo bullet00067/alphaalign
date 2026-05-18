@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2, Sparkles } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle2, TrendingUp, Save, Loader2, Sparkles, Trash2, Edit2, Wallet } from 'lucide-react';
 import AssetCategoryCard from './AssetCategoryCard';
 import SimulationReport from './SimulationReport';
 import HistoryView from './HistoryView';
@@ -13,16 +13,41 @@ const INITIAL_ALLOCATIONS = [
 ];
 
 export default function AllocationDashboard() {
+  // --- Multi-Account Setup ---
+  const [accounts, setAccounts] = useState(() => {
+    const saved = localStorage.getItem('alphaalign_accounts');
+    return saved ? JSON.parse(saved) : [{ id: 'default', name: '預設帳戶' }];
+  });
+
+  const [currentAccountId, setCurrentAccountId] = useState(() => {
+    return localStorage.getItem('alphaalign_current_account_id') || 'default';
+  });
+
+  // Inline UI states for Account management
+  const [isAddingAccount, setIsAddingAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [isEditingAccount, setIsEditingAccount] = useState(false);
+  const [editAccountName, setEditAccountName] = useState('');
+
+  // Active Portfolio States (parameterized by currentAccountId)
   const [allocations, setAllocations] = useState(() => {
-    const saved = localStorage.getItem('alphaalign_allocations');
+    const activeId = localStorage.getItem('alphaalign_current_account_id') || 'default';
+    const saved = localStorage.getItem(`alphaalign_allocations_${activeId}`) 
+      || localStorage.getItem('alphaalign_allocations'); // Backward compatibility fallback
     return saved ? JSON.parse(saved) : INITIAL_ALLOCATIONS;
   });
+
   const [depositCash, setDepositCash] = useState(() => {
-    const saved = localStorage.getItem('alphaalign_deposit_cash');
+    const activeId = localStorage.getItem('alphaalign_current_account_id') || 'default';
+    const saved = localStorage.getItem(`alphaalign_deposit_cash_${activeId}`)
+      || localStorage.getItem('alphaalign_deposit_cash'); // Backward compatibility fallback
     return saved !== null ? Number(saved) : 0;
   });
+
   const [freeCash, setFreeCash] = useState(() => {
-    const saved = localStorage.getItem('alphaalign_free_cash');
+    const activeId = localStorage.getItem('alphaalign_current_account_id') || 'default';
+    const saved = localStorage.getItem(`alphaalign_free_cash_${activeId}`)
+      || localStorage.getItem('alphaalign_free_cash'); // Backward compatibility fallback
     return saved !== null ? Number(saved) : 0;
   });
   
@@ -44,11 +69,11 @@ export default function AllocationDashboard() {
   const remaining = 100 - totalAllocation;
   const isPerfect = remaining === 0;
 
-  // --- Fetch History from API ---
-  const fetchHistory = async () => {
+  // --- Fetch History from API (Filtered by Current Account ID) ---
+  const fetchHistory = async (accId = currentAccountId) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await axios.get(`${apiUrl}/api/rebalance/history`);
+      const response = await axios.get(`${apiUrl}/api/rebalance/history?account_id=${accId}`);
       setHistoryData(response.data);
     } catch (err) {
       console.error("無法取得歷史紀錄:", err);
@@ -56,21 +81,98 @@ export default function AllocationDashboard() {
   };
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    fetchHistory(currentAccountId);
+  }, [currentAccountId]);
 
   // --- Persist active session states locally ---
   useEffect(() => {
-    localStorage.setItem('alphaalign_allocations', JSON.stringify(allocations));
-  }, [allocations]);
+    localStorage.setItem(`alphaalign_allocations_${currentAccountId}`, JSON.stringify(allocations));
+  }, [allocations, currentAccountId]);
 
   useEffect(() => {
-    localStorage.setItem('alphaalign_deposit_cash', depositCash);
-  }, [depositCash]);
+    localStorage.setItem(`alphaalign_deposit_cash_${currentAccountId}`, depositCash.toString());
+  }, [depositCash, currentAccountId]);
 
   useEffect(() => {
-    localStorage.setItem('alphaalign_free_cash', freeCash);
-  }, [freeCash]);
+    localStorage.setItem(`alphaalign_free_cash_${currentAccountId}`, freeCash.toString());
+  }, [freeCash, currentAccountId]);
+
+  // --- Account Management Core Handlers ---
+  const handleSwitchAccount = (accountId) => {
+    // 1. Save current account values
+    localStorage.setItem(`alphaalign_allocations_${currentAccountId}`, JSON.stringify(allocations));
+    localStorage.setItem(`alphaalign_deposit_cash_${currentAccountId}`, depositCash.toString());
+    localStorage.setItem(`alphaalign_free_cash_${currentAccountId}`, freeCash.toString());
+
+    // 2. Load target account values
+    const savedAllocations = localStorage.getItem(`alphaalign_allocations_${accountId}`);
+    const savedDepositCash = localStorage.getItem(`alphaalign_deposit_cash_${accountId}`);
+    const savedFreeCash = localStorage.getItem(`alphaalign_free_cash_${accountId}`);
+
+    setAllocations(savedAllocations ? JSON.parse(savedAllocations) : INITIAL_ALLOCATIONS);
+    setDepositCash(savedDepositCash !== null ? Number(savedDepositCash) : 0);
+    setFreeCash(savedFreeCash !== null ? Number(savedFreeCash) : 0);
+
+    setCurrentAccountId(accountId);
+    localStorage.setItem('alphaalign_current_account_id', accountId);
+    setReportData(null);
+    setError(null);
+  };
+
+  const handleCreateAccount = (name) => {
+    if (!name || !name.trim()) return;
+    const newId = 'acc_' + Date.now();
+    const newAccount = { id: newId, name: name.trim() };
+    const updated = [...accounts, newAccount];
+    
+    setAccounts(updated);
+    localStorage.setItem('alphaalign_accounts', JSON.stringify(updated));
+
+    // Initialize the new account's allocations by copying current screen template
+    localStorage.setItem(`alphaalign_allocations_${newId}`, JSON.stringify(allocations));
+    localStorage.setItem(`alphaalign_deposit_cash_${newId}`, depositCash.toString());
+    localStorage.setItem(`alphaalign_free_cash_${newId}`, freeCash.toString());
+
+    // Switch to it immediately
+    setCurrentAccountId(newId);
+    localStorage.setItem('alphaalign_current_account_id', newId);
+    setReportData(null);
+    setError(null);
+  };
+
+  const handleRenameAccount = (accountId, newName) => {
+    if (!newName || !newName.trim()) return;
+    const updated = accounts.map(acc => {
+      if (acc.id === accountId) {
+        return { ...acc, name: newName.trim() };
+      }
+      return acc;
+    });
+    setAccounts(updated);
+    localStorage.setItem('alphaalign_accounts', JSON.stringify(updated));
+  };
+
+  const handleDeleteAccount = (accountId) => {
+    if (accounts.length <= 1) {
+      alert("至少必須保留一個帳戶！");
+      return;
+    }
+    if (!confirm("確定要刪除此帳戶與其所有本地設定嗎？此動作無法復原。")) {
+      return;
+    }
+
+    const updated = accounts.filter(acc => acc.id !== accountId);
+    setAccounts(updated);
+    localStorage.setItem('alphaalign_accounts', JSON.stringify(updated));
+
+    // Clear local storage for this deleted account
+    localStorage.removeItem(`alphaalign_allocations_${accountId}`);
+    localStorage.removeItem(`alphaalign_deposit_cash_${accountId}`);
+    localStorage.removeItem(`alphaalign_free_cash_${accountId}`);
+
+    // Switch to the fallback account
+    handleSwitchAccount(updated[0].id);
+  };
 
   // --- Category Actions ---
   const addCategory = () => {
@@ -167,6 +269,7 @@ export default function AllocationDashboard() {
   // --- Map Allocation Payload Helper ---
   const getPayload = () => {
     return {
+      account_id: currentAccountId,
       deposit_cash: Number(depositCash) || 0,
       current_free_cash: Number(freeCash) || 0,
       allocations: allocations.map(cat => ({
@@ -316,6 +419,118 @@ export default function AllocationDashboard() {
             <p className="text-slate-400 mt-2 text-sm md:text-base">
               互動式資產再平衡與監控平台
             </p>
+          </div>
+        </div>
+
+        {/* Account Switcher Bar */}
+        <div className="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 p-4 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400 shrink-0">
+              <Wallet size={20} />
+            </div>
+            {isEditingAccount ? (
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <input
+                  type="text"
+                  value={editAccountName}
+                  onChange={(e) => setEditAccountName(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 w-full md:w-48 font-medium"
+                  placeholder="帳戶名稱"
+                  autoFocus
+                />
+                <button
+                  onClick={() => {
+                    handleRenameAccount(currentAccountId, editAccountName);
+                    setIsEditingAccount(false);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 rounded-xl transition-all font-semibold shrink-0"
+                >
+                  儲存
+                </button>
+                <button
+                  onClick={() => setIsEditingAccount(false)}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-3 py-2 rounded-xl transition-all shrink-0"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-400 font-semibold tracking-wider uppercase">當前券商帳戶</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <select
+                    value={currentAccountId}
+                    onChange={(e) => handleSwitchAccount(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-blue-500 cursor-pointer min-w-[150px] transition-colors"
+                  >
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      const currentAcc = accounts.find(a => a.id === currentAccountId);
+                      setEditAccountName(currentAcc ? currentAcc.name : '');
+                      setIsEditingAccount(true);
+                    }}
+                    className="text-slate-400 hover:text-blue-400 p-1.5 hover:bg-slate-700/40 rounded-lg transition-all"
+                    title="重命名帳戶"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  {accounts.length > 1 && (
+                    <button
+                      onClick={() => handleDeleteAccount(currentAccountId)}
+                      className="text-slate-400 hover:text-red-400 p-1.5 hover:bg-slate-700/40 rounded-lg transition-all"
+                      title="刪除此帳戶"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isAddingAccount ? (
+              <div className="flex items-center gap-2 w-full md:w-auto animate-fadeIn">
+                <input
+                  type="text"
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 w-full md:w-48 font-medium"
+                  placeholder="輸入新帳戶名稱"
+                  autoFocus
+                />
+                <button
+                  onClick={() => {
+                    handleCreateAccount(newAccountName);
+                    setNewAccountName('');
+                    setIsAddingAccount(false);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 rounded-xl font-semibold transition-all shrink-0"
+                >
+                  確認建立
+                </button>
+                <button
+                  onClick={() => {
+                    setNewAccountName('');
+                    setIsAddingAccount(false);
+                  }}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-3 py-2 rounded-xl transition-all shrink-0"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAddingAccount(true)}
+                className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-blue-500/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Plus size={14} /> 新增帳戶
+              </button>
+            )}
           </div>
         </div>
 
