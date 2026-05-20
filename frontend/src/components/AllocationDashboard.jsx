@@ -381,6 +381,23 @@ export default function AllocationDashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // --- Delete a past snapshot from history ---
+  const handleDeleteHistory = async (recordId) => {
+    if (!confirm("確定要刪除此筆歷史紀錄嗎？此動作將無法復原。")) {
+      return;
+    }
+    
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      await axios.delete(`${apiUrl}/api/rebalance/history/${recordId}`);
+      // Refresh the list for the current active account
+      fetchHistory(currentAccountId);
+    } catch (err) {
+      console.error("無法刪除歷史紀錄:", err);
+      alert("刪除失敗：" + (err.response?.data?.detail || err.message));
+    }
+  };
+
   const handleWizardSubmit = async () => {
     if (!wizardText.trim()) return;
     setIsWizardLoading(true);
@@ -775,7 +792,12 @@ export default function AllocationDashboard() {
         <SimulationReport reportData={reportData} />
 
         {/* Historical Track section */}
-        <HistoryView historyData={historyData} onRestore={handleRestore} />
+        <HistoryView 
+          historyData={historyData} 
+          onRestore={handleRestore} 
+          onDelete={handleDeleteHistory} 
+        />
+
 
       </div>
     </div>

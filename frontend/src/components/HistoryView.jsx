@@ -1,7 +1,7 @@
 import React from 'react';
-import { Calendar, RefreshCw } from 'lucide-react';
+import { Calendar, RefreshCw, Trash2 } from 'lucide-react';
 
-export default function HistoryView({ historyData, onRestore }) {
+export default function HistoryView({ historyData, onRestore, onDelete }) {
   if (!historyData || historyData.length === 0) {
     return (
       <div className="bg-slate-800/20 border border-slate-700/50 rounded-2xl p-8 text-center text-slate-500">
@@ -54,6 +54,13 @@ export default function HistoryView({ historyData, onRestore }) {
                 className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
               >
                 <RefreshCw size={12} /> 還原此配置
+              </button>
+              <button 
+                onClick={() => onDelete(item.id)}
+                className="bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
+                title="刪除此快照"
+              >
+                <Trash2 size={12} /> 刪除
               </button>
             </div>
           </div>

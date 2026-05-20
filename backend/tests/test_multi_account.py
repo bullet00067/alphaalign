@@ -71,3 +71,38 @@ async def test_api_history_filtering(monkeypatch):
     data_fubon = await get_rebalance_history(account_id="acc_fubon")
     assert len(data_fubon) == 1
     assert data_fubon[0]["id"] == "2"
+
+
+@pytest.mark.anyio
+async def test_api_history_deletion(monkeypatch):
+    from main import delete_rebalance_record
+    from services.supabase_db import SupabaseDB
+    import requests
+
+    # 1. Test API endpoint routing
+    monkeypatch.setattr(SupabaseDB, "delete_history", lambda rid: {"status": "success", "message": "mocked delete", "id": rid})
+    res = await delete_rebalance_record("12345")
+    assert res["status"] == "success"
+    assert res["id"] == "12345"
+
+    # 2. Test SupabaseDB.delete_history local prefix direct fallback
+    monkeypatch.setattr(SupabaseDB, "delete_local", lambda rid: {"status": "success", "message": "local success", "id": rid})
+    res_local = SupabaseDB.delete_history("local_9999")
+    assert res_local["status"] == "success"
+    assert res_local["id"] == "local_9999"
+
+    # 3. Test SupabaseDB.delete_history Supabase failure fallback to local
+    monkeypatch.setattr(SupabaseDB, "is_configured", lambda: True)
+    
+    # Mock requests.delete to return a 401 (e.g. RLS error)
+    class MockResponse:
+        status_code = 401
+        text = "RLS restriction"
+    
+    monkeypatch.setattr(requests, "delete", lambda *args, **kwargs: MockResponse())
+    
+    # Test delete_history should fallback to delete_local
+    res_fallback = SupabaseDB.delete_history("supabase-uuid-123")
+    assert res_fallback["status"] == "success"
+    assert res_fallback["id"] == "supabase-uuid-123"
+

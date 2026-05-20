@@ -137,3 +137,14 @@ async def parse_wizard(request: WizardRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.delete("/api/rebalance/history/{record_id}")
+async def delete_rebalance_record(record_id: str):
+    """
+    【刪除歷史紀錄】根據指定快照 ID 安全移除歷史再平衡快照 (支援雲端與本地自癒降級刪除)。
+    """
+    res = SupabaseDB.delete_history(record_id)
+    if res["status"] == "error":
+        raise HTTPException(status_code=400, detail=res["message"])
+    return res
+
+

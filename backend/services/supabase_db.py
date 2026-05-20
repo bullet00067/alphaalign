@@ -110,3 +110,61 @@ class SupabaseDB:
         except Exception as e:
             print(f"Local Fallback Load Error: {e}")
             return []
+
+    @classmethod
+    def delete_history(cls, record_id: str) -> Dict[str, Any]:
+        """
+        刪除指定歷史快照。優先判斷字首是否為本地快照，若是則直接自本地檔案刪除；
+        若為雲端快照，則發送 DELETE 請求；若發送失敗自動進行本地降級刪除。
+        """
+        if str(record_id).startswith("local_"):
+            return cls.delete_local(record_id)
+            
+        if not cls.is_configured():
+            # 未配置 Supabase 時，嘗試在本地備份中刪除
+            return cls.delete_local(record_id)
+
+        url = f"{SUPABASE_URL}/rest/v1/rebalance_history?id=eq.{record_id}"
+        try:
+            response = requests.delete(url, headers=cls.get_headers(), timeout=5)
+            if response.status_code in [200, 204]:
+                return {"status": "success", "message": "Record deleted successfully from Supabase."}
+            else:
+                # 雲端刪除失敗（可能為 RLS 或權限問題），嘗試自本地快照搜尋並刪除
+                local_res = cls.delete_local(record_id)
+                if local_res["status"] == "success":
+                    return local_res
+                return {"status": "error", "message": f"Supabase API returned {response.status_code}: {response.text}"}
+        except Exception as e:
+            # 連線異常，啟用自癒降級本地刪除
+            local_res = cls.delete_local(record_id)
+            if local_res["status"] == "success":
+                return local_res
+            return {"status": "error", "message": f"Supabase delete failed: {str(e)}"}
+
+    @classmethod
+    def delete_local(cls, record_id: str) -> Dict[str, Any]:
+        """
+        自本地 JSON 檔案中刪除特定 ID 的歷史紀錄快照。
+        """
+        try:
+            if not os.path.exists(LOCAL_DB_FILE):
+                return {"status": "error", "message": "Local database file does not exist."}
+                
+            with open(LOCAL_DB_FILE, "r", encoding="utf-8") as f:
+                records = json.load(f)
+                
+            original_len = len(records)
+            # 以字串做 ID 去重比較，相容 uuid 與 local_ timestamp 格式
+            records = [r for r in records if str(r.get("id")) != str(record_id)]
+            
+            if len(records) == original_len:
+                return {"status": "error", "message": f"Record with ID {record_id} not found in local database."}
+                
+            with open(LOCAL_DB_FILE, "w", encoding="utf-8") as f:
+                json.dump(records, f, ensure_ascii=False, indent=2)
+                
+            return {"status": "success", "message": "Record deleted successfully from local database."}
+        except Exception as e:
+            print(f"Local Fallback Delete Error: {e}")
+            return {"status": "error", "message": f"Local storage fallback delete failed: {e}"}
