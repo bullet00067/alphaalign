@@ -25,6 +25,7 @@ class RebalanceRequest(BaseModel):
     account_id: str = "default" # 關聯的券商帳戶 ID
     deposit_cash: float  # 本次預計額外投入的資金
     current_free_cash: float # 目前未投入的閒置現金
+    momentum_mode: bool = False # 是否啟用強勢股加碼模式
     allocations: List[CategoryAllocation]
 
 
@@ -268,11 +269,20 @@ class RebalanceEngine:
             asset_actions = []
             
             if len(cat.assets) > 0 and abs(diff_amount) > 10:
-                # 排序：優先找股數最多的一檔
-                sorted_assets = sorted(cat.assets, key=lambda x: x.current_shares, reverse=True)
-                
                 if diff_amount > 0:
-                    # 需要買入 (BUY)，全額買入股數最多的一檔
+                    # 需要買入 (BUY)
+                    if request.momentum_mode:
+                        # 強勢股加碼模式：優先買入報酬率最高的標的
+                        def get_roi(asset):
+                            price = verified_prices[asset.ticker]
+                            cost = asset.average_cost
+                            return (price - cost) / cost if cost > 0 else 0.0
+                        
+                        sorted_assets = sorted(cat.assets, key=get_roi, reverse=True)
+                    else:
+                        # 風險分散模式：優先買入持股數最多的標的
+                        sorted_assets = sorted(cat.assets, key=lambda x: x.current_shares, reverse=True)
+
                     primary_asset = sorted_assets[0]
                     price = verified_prices[primary_asset.ticker]
                     ideal_shares = diff_amount / price
@@ -292,6 +302,8 @@ class RebalanceEngine:
                         })
                 else:
                     # 需要賣出 (SELL)，從股數最多的一檔開始賣，若不夠賣則找下一檔
+                    # 賣出時維持原本邏輯：優先找股數最多的一檔
+                    sorted_assets = sorted(cat.assets, key=lambda x: x.current_shares, reverse=True)
                     remaining_sell_amount = abs(diff_amount)
                     for asset in sorted_assets:
                         if remaining_sell_amount <= 10:
